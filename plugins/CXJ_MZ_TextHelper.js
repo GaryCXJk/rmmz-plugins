@@ -82,6 +82,46 @@
  * {string} waitMode   - The name of the wait mode.
  * {function} callback - A callback function. Must return a boolean.
  *
+ * ---
+ *
+ * CXJ_MZ.TextHelper.addMessageCode(code, callback, type, escapeBrackets = null)
+ *
+ * Message codes can be added through this method. For the large part it's
+ * fairly straightforward. The code is a regular expression string, this will
+ * later be converted to a regular expression object, primarily because depending
+ * on the chosen type, the full regular expression changes. It will also be
+ * pre-processed to replace certain strings with a regular expression:
+ *
+ * :any  - (.+?)             - Any character string.
+ * :num  - (-?\d+(?:\.\d+)?) - A number.
+ * :unum - (\d+(?:\.\d+)?)   - A positive number.
+ * :int  - (-?\d+)           - An integer.
+ * :uint - (\d+)             - A positive integer.
+ * :id   - (\w+)             - Any alphanumerical character or an underscore.
+ *
+ * There are two types of message codes, convert and process. The convert codes
+ * essentially replaces the codes before it gets rendered, and process replaces
+ * the codes on render. Essentially it depends whether the code is being used
+ * in Window_Base.prototype.convertEscapeCharacters or in
+ * Window_Base.prototype.processEscapeCharacter.
+ *
+ * For example, if you simply want to display the current date, the name of
+ * the first party member, or the amount of money you have, these codes are
+ * being used during convert. If you want to display an image icon, or you
+ * want to change the text color, these codes are being used during process.
+ *
+ * The escape brackets option has priority over the global settings, meaning a
+ * plugin developer can enforce whether the brackets and parentheses are escaped
+ * or not.
+ *
+ * Arguments:
+ *
+ * {string} code            - The code, as a regular expression string.
+ * {function} callback      - A callback function. Must return a boolean.
+ * {string} type            - Either convert or process.
+ * {boolean} escapeBrackets - (optional) Whether to escape brackets and
+ *                            parentheses or not.
+ *
  * -----------------
  * Plugin parameters
  * -----------------
@@ -146,11 +186,26 @@
  * Callback  - The callback function. This should return true if it's still
  *             waiting, and false if it's done.
  *
+ * ---------------
+ * Plugin commands
+ * ---------------
+ *
+ * Set wait mode
+ * -------------
+ *
+ * This allows you to manually set a wait mode. This is mostly useful if you
+ * either have a custom wait mode, or a plugin requires you to manually set
+ * the current wait mode.
+ *
+ * Arguments:
+ *
+ * Wait mode - The name of the wait mode.
+ *
  * ============================================================================
  * = Changelog                                                                =
  * ============================================================================
  *
- * 1.0 (2020-10-19)
+ * 1.0 (2020-10-28)
  * ----------------
  *
  * * Initial release
@@ -165,6 +220,7 @@
  *
  * * Game_Interpreter.prototype.updateWaitMode
  * * Window_Base.prototype.convertEscapeCharacters
+ * * Window_Base.prototype.processEscapeCharacter
  *
  * ============================================================================
  * = License                                                                  =
@@ -349,8 +405,11 @@
       messageCode = messageCode.replace(/\((.+?)\)/, '\\($1\\)');
     }
     messageCode = messageCode.replace(/\:any/,'(.+?)');
-    messageCode = messageCode.replace(/\:num/,'([0-9]+)');
-    messageCode = messageCode.replace(/\:id/,'([0-9a-zA-Z_])');
+    messageCode = messageCode.replace(/\:num/,'(-?\d+(?:\.\d+)?)');
+    messageCode = messageCode.replace(/\:unum/,'(\d+(?:\.\d+)?)');
+    messageCode = messageCode.replace(/\:int/,'(-?\d+)');
+    messageCode = messageCode.replace(/\:uint/,'(\d+)');
+    messageCode = messageCode.replace(/\:id/,'(\w+)');
     return messageCode;
   }
 
