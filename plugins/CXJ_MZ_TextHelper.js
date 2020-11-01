@@ -114,10 +114,13 @@
  * plugin developer can enforce whether the brackets and parentheses are escaped
  * or not.
  *
+ * Note that with process callbacks, the first argument is always the text state.
+ *
  * Arguments:
  *
  * {string} code            - The code, as a regular expression string.
- * {function} callback      - A callback function. Must return a boolean.
+ * {function} callback      - A callback function. Must return a string for convert,
+ *                            or a boolean for process.
  * {string} type            - Either convert or process.
  * {boolean} escapeBrackets - (optional) Whether to escape brackets and
  *                            parentheses or not.
@@ -142,6 +145,9 @@
  * create them through this parameter. Do note that message codes added
  * through here will get run first, followed by those added by other plugins,
  * and finally the built-in message codes.
+ *
+ * Note that with process callbacks, the first argument is always the text state.
+ * This parameter will automatically be defined as textState.
  *
  * Each entry has the following options:
  *
@@ -205,7 +211,7 @@
  * = Changelog                                                                =
  * ============================================================================
  *
- * 1.0 (2020-10-28)
+ * 1.0 (2020-10-31)
  * ----------------
  *
  * * Initial release
@@ -297,6 +303,8 @@
  * @value convert
  * @option During interpretation (process)
  * @value process
+ * @options During message interpretation (message)
+ * @value message
  *
  * @param parameterNames
  * @text Parameter names
@@ -315,6 +323,23 @@
  * @value true
  * @option No
  * @value false
+ *
+ * @param location
+ * @text Valid code location
+ * @desc The window where the code is valid.
+ * @type select
+ * @default base
+ * @option All windows
+ * @value base
+ * @option Message
+ * @value message
+ * @option Other
+ * @value other
+ *
+ * @param locationOther
+ * @text Other location
+ * @desc Enter the location name if you picked "Other".
+ * @type text
  */
 /*~struct~WaitMode:
  * @param waitMode
@@ -371,6 +396,8 @@
       type: 'text',
       parameterNames: ['array', 'text'],
       escapeBrackets: 'literal',
+      location: 'string',
+      locationOther: 'string',
     }],
     waitModes: ['array', 'object', {
       waitMode: 'text',
@@ -385,8 +412,14 @@
 
   const waitModes = {};
   const messageCodes = {
-    convert: [],
-    process: [],
+    convert: {
+      base: [],
+      message: [],
+    },
+    process: {
+      base: [],
+      message: [],
+    },
   };
 
   /* --------------------------------------------------------------------------
@@ -413,9 +446,96 @@
     return messageCode;
   }
 
+  /**
+   * Helper function that simplifies executing code.
+   *
+   * Essentially it shifts the first entry, the full string match, out of
+   * the match array and uses the rest as parameter for the callback
+   * function.
+   *
+   * @param {function} callback - A callback.
+   * @param  {...string} match - A regular expression match.
+   */
   const runMessageCode = function(callback, ...match) {
     return callback.call(this, ...match.slice(1));
   };
+
+  /**
+   * Helper function that simplifies running convertEscapeCharacters on
+   * custom text codes.
+   *
+   * @param {string} text - The text that needs to be replaced.
+   * @param {string} location - The window type.
+   * @param {function} callback - The callback.
+   */
+  const runConvertEscapeCharacters = function(text, location, callback = null) {
+    let newText = text.replace(/\\/g, '\x1b');
+    newText = newText.replace(/\x1b\x1b/g, '\\');
+    const list = messageCodes.convert[location] || [];
+    list.forEach((data) => {
+      const [code, callback] = data;
+      newText = newText.replace(new RegExp(`\x1b${code}`, 'gi'), runMessageCode.bind(this, callback));
+    });
+    newText = newText.replace(/\\/g, '\\\\');
+    if (callback) {
+      newText = callback.call(this, newText);
+    }
+    return newText;
+  }
+
+  /**
+   * Helper function that simplifies running processEscapeCharacter on
+   * custom text codes.
+   *
+   * @param {string} code - The code that's found. Will be used to (temporarily)
+   * reset the text state index.
+   * @param {object} textState - The current text state.
+   * @param {string} location - The location.
+   * @param {function} callback - The callback.
+   */
+  const runProcessEscapeCharacter = function(code, textState, location, callback = null) {
+    // First, let's set the index back, as Window_Base.prototype.obtainEscapeCode
+    // sets the index to where it thinks the code ends.
+    textState.index-= code.length;
+
+    // Let's get the relevant bit of the text.
+    const text = textState.text.slice(textState.index);
+
+    // We'll check if a code match has been found by setting this variable.
+    let found = false;
+
+    // Ensures we'll work with an array (in case a non-existing location is picked).
+    // This is mainly for the unsupported window types.
+    const list = messageCodes.process[location] || [];
+    list.every((data) => {
+      // Destructurizes the data object.
+      const [longCode, callback] = data;
+
+      // Check if there's a match at the beginning of the text string.
+      const match = text.match(new RegExp(`^${longCode}`, 'i'));
+      if (match) {
+        // If there is a match, run the callback, and set the index after the matched
+        // string. Finally, set found to true, and abort the loop.
+        const matchedString = match[0];
+        callback.call(this, textState, ...match.slice(1));
+        textState.index+= matchedString.length;
+        found = true;
+        return false;
+      }
+      return true;
+    });
+    if (!found) {
+      // If no code match is found, set the index back to where it originally was.
+      textState.index+= code.length;
+
+      // If there's a callback, run the callback.
+      if (callback) {
+        return callback.call(this, code, textState);
+      }
+    }
+    // Return the found status.
+    return found;
+  }
 
   /* --------------------------------------------------------------------------
    * - Plugin methods                                                         -
@@ -432,12 +552,24 @@
     waitModes[waitMode] = callback;
   }
 
-  TextHelper.addMessageCode = (code, callback, type, escapeBrackets = null) => {
+  /**
+   * Adds a message code.
+   * @param {string} code - The code.
+   * @param {function} callback - The callback that should be called.
+   * @param {string} type - Either convert or process.
+   * @param {*} escapeBrackets - Whether to escape brackets and parentheses or
+   * not. Set null for default.
+   * @param {string} location - Allows you to limit where the code can be used.
+   * Use "base" to make it available everywhere.
+   */
+  TextHelper.addMessageCode = (code, callback, type, escapeBrackets = null, location = 'base') => {
     const data = [setMessageCode(code, escapeBrackets), callback];
-    messageCodes[type] = messageCodes[type] || [];
-    messageCodes[type].push(data);
+    messageCodes[type] = messageCodes[type] || {};
+    messageCodes[type][location] = messageCodes[type][location] || [];
+    messageCodes[type][location].push(data);
   }
 
+  // All parameter message codes get stored.
   if (parameters['textParser.messageCodes'] && parameters['textParser.messageCodes'].length) {
     parameters['textParser.messageCodes'].forEach((data) => {
       const {
@@ -446,13 +578,22 @@
         type,
         parameterNames = [],
         escapeBrackets = null,
+        location = 'base',
+        locationOther = 'base',
       } = data;
 
-      const realCallback = new Function(...parameterNames, callback);
-      TextHelper.addMessageCode(code, realCallback, type, escapeBrackets);
+      // Ensures that the first parameter for convert callbacks is textState.
+      const realParameterNames = [
+        ...(type === 'process' ? ['textState'] : []),
+        ...parameterNames,
+      ];
+
+      const realCallback = new Function(...realParameterNames, callback);
+      TextHelper.addMessageCode(code, realCallback, type, escapeBrackets, location === 'other' ? locationOther : location);
     });
   }
 
+  // All parameter wait modes get stored.
   if (parameters['waitModes'] && parameters['waitModes'].length) {
     parameters['waitModes'].forEach((data) => {
       const {
@@ -497,17 +638,14 @@
      * @param {string} text - A text string.
      * @private
      */
-    const convertEscapeCharacters = CoreEssentials.setNoConflict('Window_Base.prototype.convertEscapeCharacters');
+    const wbConvertEscapeCharacters = CoreEssentials.setNoConflict('Window_Base.prototype.convertEscapeCharacters');
     Window_Base.prototype.convertEscapeCharacters = function(text) {
-      let newText = text.replace(/\\/g, '\x1b');
-      newText = newText.replace(/\x1b\x1b/g, '\\');
-      messageCodes.convert.forEach((data) => {
-        const [code, callback] = data;
-        newText = newText.replace(new RegExp(`\x1b${code}`, 'gi'), runMessageCode.bind(this, callback));
-      });
-      newText = newText.replace(/\\/g, '\\\\');
-      newText = convertEscapeCharacters.call(this, newText);
-      return newText;
+      let newText = text;
+      const windowName = this.constructor.name.replace(/^Window_/, '').toLowerCase();
+      if (windowName !== 'base') {
+        newText = runConvertEscapeCharacters.call(this, newText, windowName);
+      }
+      return runConvertEscapeCharacters.call(this, newText, 'base', wbConvertEscapeCharacters);
     };
 
     /* --------------------------------------------------------------------
@@ -521,27 +659,32 @@
      * @param {object} textState
      * @private
      */
-    const processEscapeCharacter = CoreEssentials.setNoConflict('Window_Base.prototype.processEscapeCharacter');
+    const wbProcessEscapeCharacter = CoreEssentials.setNoConflict('Window_Base.prototype.processEscapeCharacter');
     Window_Base.prototype.processEscapeCharacter = function(code, textState) {
-      textState.index--;
-      const text = textState.text.slice(textState.index);
-      let found = false;
-      messageCodes.process.every((data) => {
-        const [longCode, callback] = data;
-        const match = text.match(new RegExp(`^${longCode}`, 'i'));
-        if (match) {
-          const matchedString = match[0];
-          runMessageCode.call(this, callback, ...match);
-          textState.index+= matchedString.length;
-          found = true;
-          return false;
+      const windowName = this.constructor.name.replace(/^Window_/, '').toLowerCase();
+      if (!['base', 'message'].includes(windowName)) {
+        const found = runProcessEscapeCharacter.call(this, code, textState, windowName);
+        if (found) {
+          return true;
         }
-        return true;
-      });
-      if (!found) {
-        textState.index++;
-        processEscapeCharacter.call(this, code, textState);
       }
+      return runProcessEscapeCharacter.call(this, code, textState, 'base', wbProcessEscapeCharacter);
+    }
+
+    /* --------------------------------------------------------------------
+     * - Window_Message.prototype.processEscapeCharacter (Override)       -
+     * --------------------------------------------------------------------
+     */
+
+    /**
+     * @method convertEscapeCharacters
+     * @param {string} code
+     * @param {object} textState
+     * @private
+     */
+    const wmProcessEscapeCharacter = CoreEssentials.setNoConflict('Window_Message.prototype.processEscapeCharacter');
+    Window_Message.prototype.processEscapeCharacter = function(code, textState) {
+      return runProcessEscapeCharacter.call(this, code, textState, 'message', wmProcessEscapeCharacter);
     }
   })();
 })();

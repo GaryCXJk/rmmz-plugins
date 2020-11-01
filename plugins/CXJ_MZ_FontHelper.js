@@ -177,12 +177,21 @@
    */
   FontHelper.loadFont = (fontFace, filename, fallback = null) => {
     if (fontFace === 'rmmz-mainfont' || fontFace === 'rmmz-numberfont' || FontManager._state[fontFace]) {
-      continue;
+      return;
     }
 
     FontManager.load(fontFace, filename);
     fontFallbacks[fontFace] = fallback;
   }
+
+  TextHelper.addMessageCode('font\\[\\]', function() {
+    this.contents.fontFace = $gameSystem.mainFontFace();
+  }, false);
+
+  TextHelper.addMessageCode('font[:any]', function(fontFace) {
+    const realFontFace = fontFace === 'rmmz-mainfont' ? null : fontFace;
+    this.contents.fontFace = $gameSystem.getFontFace(realFontFace);
+  }, 'process', true);
 
   (() => {
     CoreEssentials.registerFunctionExtension('Game_System.prototype.initialize', function() {
@@ -191,11 +200,15 @@
 
     const mainFontFace = CoreEssentials.setNoConflict('Game_System.prototype.mainFontFace');
     Game_System.prototype.mainFontFace = function() {
+      return this.getFontFace(this._fontOverride);
+    }
+
+    Game_System.prototype.getFontFace = function(fontFace) {
       let override = '';
-      if (this._fontOverride) {
-        override = `${this._fontOverride}, `;
-        if (fontFallback[this._fontOverride]) {
-          override = `${override}${fontFallback[this._fontOverride]}, `;
+      if (fontFace) {
+        override = `${fontFace}, `;
+        if (fontFallback[fontFace]) {
+          override = `${override}${fontFallback[fontFace]}, `;
         }
       }
       return `${override}${mainFontFace.call(this)}`;

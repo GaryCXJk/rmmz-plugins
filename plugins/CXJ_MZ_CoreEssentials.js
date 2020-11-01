@@ -187,6 +187,70 @@
  *
  * ---
  *
+ * CXJ_MZ.CoreEssentials.loadFile(file, type = 'binary')
+ *
+ * This retrieves the contents of a file.
+ *
+ * This simplifies retrieving the file content, and makes it more flexible to process it,
+ * by using promises. Since RPG Maker MZ is primarily built around ES6, it now uses fetch
+ * instead of XHR requests, or fs when using it within NW.js.
+ *
+ * Arguments:
+ *
+ * {string} file - The file to load.
+ * {string} type - (optional) How you want to output your data.
+ *
+ * Returns:
+ *
+ * A promise object that resolves to the requested data.
+ *
+ * ---
+ *
+ * CXJ_MZ.CoreEssentials.loadBinary(file)
+ *
+ * This retrieves the contents of a file in an array buffer. It functions the same as
+ * if you use CXJ_MZ.CoreEssentials.loadFile(file, 'binary').
+ *
+ * Arguments:
+ *
+ * {string} file - The file to load.
+ *
+ * Returns:
+ *
+ * A promise object that resolves to the requested data.
+ *
+ * ---
+ *
+ * CXJ_MZ.CoreEssentials.loadJson(file)
+ *
+ * This retrieves the contents of a file in an object. It functions the same as
+ * if you use CXJ_MZ.CoreEssentials.loadFile(file, 'json').
+ *
+ * Arguments:
+ *
+ * {string} file - The file to load.
+ *
+ * Returns:
+ *
+ * A promise object that resolves to the requested data.
+ *
+ * ---
+ *
+ * CXJ_MZ.CoreEssentials.loadText(file)
+ *
+ * This retrieves the contents of a file in plaintext. It functions the same as
+ * if you use CXJ_MZ.CoreEssentials.loadFile(file, 'text').
+ *
+ * Arguments:
+ *
+ * {string} file - The file to load.
+ *
+ * Returns:
+ *
+ * A promise object that resolves to the requested data.
+ *
+ * ---
+ *
  * CXJ_MZ.CoreEssentials.setNoConflict(objStr, boundObject = null, storageObject = CXJ_MZ.noConflict)
  *
  * A helper function that keeps an unaltered copy of an object or function.
@@ -375,10 +439,15 @@
  * = Changelog                                                                =
  * ============================================================================
  *
+ * 1.1 (2020-10-28)
+ * ----------------
+ *
+ * * Added file functions.
+ *
  * 1.0 (2020-10-26)
  * ----------------
  *
- * * Initial release
+ * * Initial release.
  *
  * ============================================================================
  * = Compatibility                                                            =
@@ -432,14 +501,14 @@
   } = CXJ_MZ;
 
   /* ------------------------------------------------------------------------
-    * - PRIVATE VARIABLES                                                    -
-    * ------------------------------------------------------------------------
-    */
+   * - Private variables                                                    -
+   * ------------------------------------------------------------------------
+   */
   const configSettings = {};
   const registeredFunctionExtensions = {};
 
   /* --------------------------------------------------------------------------
-   * - PRIVATE FUNCTIONS                                                      -
+   * - Private functions                                                      -
    * -                                                                        -
    * - These are helper functions that aren't meant to be used outside the    -
    * - plugin.                                                                -
@@ -555,6 +624,80 @@
     }
 
     return currentObject;
+  }
+
+  /**
+   * Allows you to load a file.
+   *
+   * @param {string} file - The file to load.
+   * @param {string} type - How you want to output your data.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  const loadFile = (file, type = 'binary') => {
+    if (Utils.isNwjs()) {
+      return loadFileFs(file, type);
+    }
+    return loadFileFetch(file, type);
+  };
+
+  /**
+   * Allows you to load a file using the FileSystem.
+   *
+   * @param {string} file - The file to load.
+   * @param {string} type - How you want to output your data.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  const loadFileFs = (file, type = 'binary') => {
+    const fs = require('fs');
+    const fsParams = [file];
+    if (['json', 'text'].includes(type)) {
+      fsParams.push('utf-8');
+    }
+    return new Promise((resolve, reject) => {
+      fs.readFile(...fsParams, (error, data) => {
+        if (error) {
+          reject(error);
+        } else {
+          switch (type) {
+            case 'json':
+              resolve(JSON.parse(data));
+              break;
+            case 'text':
+              resolve(data);
+              break;
+            default:
+              resolve(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+              break;
+          }
+        }
+      });
+    });
+  }
+
+  /**
+   * Allows you to load a file using fetch.
+   *
+   * @param {string} file - The file to load.
+   * @param {string} type - How you want to output your data.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  const loadFileFetch = (file, type = 'binary') => {
+    let realType = ['json', 'text'].includes(type) ? type : 'arrayBuffer';
+    return new Promise((resolve, reject) => {
+      fetch(file).then((res) => {
+        if (res.ok) {
+          res[realType]().then((data) => {
+            resolve(data);
+          }).catch((error) => {
+            reject(error)
+          });
+        } else {
+          reject(new Error(res.statusText));
+        }
+      }).catch((error) => {
+        reject(error);
+      });
+    });
   }
 
   const parseDataType = (value, dataType) => {
@@ -745,6 +888,64 @@
   };
 
   /**
+   * Allows you to load a file.
+   *
+   * @param {string} file - The file to load.
+   * @param {string} type - How you want to output your data.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  CoreEssentials.loadFile = loadFile;
+
+  /**
+   * Allows you to load a file and returns it as an array buffer.
+   *
+   * @param {string} file - The file to load.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  CoreEssentials.loadBinary = (file) => {
+    return loadFile(file, 'binary');
+  }
+
+  /**
+   * Allows you to load a file and returns it as a JavaScript object.
+   *
+   * @param {string} file - The file to load.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  CoreEssentials.loadJson = (file) => {
+    return loadFile(file, 'json');
+  }
+
+  /**
+   * Allows you to load a file and returns it as plaintext.
+   *
+   * @param {string} file - The file to load.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  CoreEssentials.loadText = (file) => {
+    return loadFile(file, 'text');
+  }
+
+  /**
+   * Allows you to load a file using the FileSystem.
+   *
+   * @param {string} file - The file to load.
+   * @param {string} type - How you want to output your data.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  CoreEssentials.loadFile.fs = loadFileFs;
+
+
+  /**
+   * Allows you to load a file using fetch.
+   *
+   * @param {string} file - The file to load.
+   * @param {string} type - How you want to output your data.
+   * @returns {Promise} A promise object that resolves to the requested data.
+   */
+  CoreEssentials.loadFile.fetch = loadFileFetch;
+
+  /**
    * Allows you to keep an unaltered version of an object or function.
    *
    * This helper allows you to alter certain functionality without completely getting rid of
@@ -923,6 +1124,10 @@
     }
   };
 
+  /* --------------------------------------------------------------------------
+   * - Overrides and additions                                                -
+   * --------------------------------------------------------------------------
+   */
   (() => {
     /* --------------------------------------------------------------------
      * - ConfigManager.makeData (Override)                                -
