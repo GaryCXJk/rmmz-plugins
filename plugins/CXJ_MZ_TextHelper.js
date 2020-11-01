@@ -84,7 +84,8 @@
  *
  * ---
  *
- * CXJ_MZ.TextHelper.addMessageCode(code, callback, type, escapeBrackets = null)
+ * CXJ_MZ.TextHelper.addMessageCode(code, callback, type, escapeBrackets = null,
+ *                                      location = 'base')
  *
  * Message codes can be added through this method. For the large part it's
  * fairly straightforward. The code is a regular expression string, this will
@@ -114,6 +115,11 @@
  * plugin developer can enforce whether the brackets and parentheses are escaped
  * or not.
  *
+ * Location allows you to only set the code to a certain window. By default, only
+ * base (Window_Base) and message (Window_Message) are supported, but essentially
+ * all windows are supported, so long as the object uses the Window_ prefix, as
+ * the location is determined by the class name / object prototype constructor.
+ *
  * Note that with process callbacks, the first argument is always the text state.
  *
  * Arguments:
@@ -124,6 +130,8 @@
  * {string} type            - Either convert or process.
  * {boolean} escapeBrackets - (optional) Whether to escape brackets and
  *                            parentheses or not.
+ * {string} location        - (optional) Allows you to limit where the code can be
+ *                            used. Use "base" to make it available everywhere.
  *
  * -----------------
  * Plugin parameters
@@ -163,6 +171,9 @@
  *                                   used in the callback.
  * Escape brackets and parentheses - Whether square brackets and parentheses
  *                                   should be escaped or not.
+ * Valid code location             - The window where the code is valid.
+ * Other location                  - When "Valid code location" is "Other",
+ *                                   this field is used.
  *
  * Wait modes
  * ----------
@@ -211,7 +222,7 @@
  * = Changelog                                                                =
  * ============================================================================
  *
- * 1.0 (2020-10-31)
+ * 1.0 (2020-11-01)
  * ----------------
  *
  * * Initial release
@@ -227,6 +238,7 @@
  * * Game_Interpreter.prototype.updateWaitMode
  * * Window_Base.prototype.convertEscapeCharacters
  * * Window_Base.prototype.processEscapeCharacter
+ * * Window_Message.prototype.processEscapeCharacter
  *
  * ============================================================================
  * = License                                                                  =
