@@ -46,8 +46,8 @@
  *
  * This plugin requires the following plugins to work:
  *
- * * CXJ_MZ.CoreEssentials: ^1.0
- * * CXJ_MZ.TextHelper: ^1.0
+ * * CXJ_MZ.CoreEssentials: ^1.2
+ * * CXJ_MZ.TextHelper: ^1.0.1
  *
  * ============================================================================
  * = Placement                                                                =
@@ -75,6 +75,21 @@
  * {string} fontFace - The name of the font.
  * {string} filename - The font file name.
  * {string} fallback - The fallback font.
+ *
+ * ---
+ *
+ * CXJ_MZ.FontHelper.fontLoaded(fontFace)
+ *
+ * If you want to check whether a font has been loaded in, you can use this
+ * helper function.
+ *
+ * Arguments:
+ *
+ * {string} fontFace - The name of the font.
+ *
+ * Returns:
+ *
+ * True if the font has already been loaded, false if it hasn't.
  *
  * -------------
  * Message codes
@@ -129,9 +144,25 @@
  *
  * Font face - The name of the font to use.
  *
+ * -------------
+ * Special fonts
+ * -------------
+ *
+ * New fonts have been added that have special properties. They only appear
+ * at certain places. The names of these fonts follow a certain pattern.
+ *
+ * rmmz-windowfont-<window name> - Sets the font of a specific window.
+ *
  * ============================================================================
  * = Changelog                                                                =
  * ============================================================================
+ *
+ * 1.1 (2020-11-10)
+ * ----------------
+ *
+ * * Each window can now have their own font
+ * * Added FontHelper.fontLoaded, a helper function to check if a font has
+ *   been loaded.
  *
  * 1.0 (2020-11-01)
  * ----------------
@@ -151,6 +182,7 @@
  * * Game_Interpreter.prototype.clear
  * * Game_Interpreter.prototype.terminate
  * * Scene_Boot.prototype.loadGameFonts
+ * * Window_Base.prototype.resetFontSettings
  *
  * ============================================================================
  * = License                                                                  =
@@ -225,15 +257,19 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.FontHelper = CXJ_MZ.FontHelper || {};
-  CXJ_MZ.FontHelper.version = '1.0';
+  CXJ_MZ.FontHelper.version = '1.1';
 
   if (!CXJ_MZ.CoreEssentials) {
     throw new Error('CoreEssentials has not been initialized. Make sure you load CoreEssentials before this plugin.');
   }
 
-  if (!CXJ_MZ.CoreEssentials.isVersion('CXJ_MZ.TextHelper', '1.0')) {
-    throw new Error('TextHelper has not been initialized, or the correct version hasn\'t been loaded.');
+  if (!CXJ_MZ.CoreEssentials.isVersion('CXJ_MZ.CoreEssentials', '1.2')) {
+    throw new Error('The correct version of CoreEssentials has not been loaded (required version: 1.2).');
   }
+
+  CXJ_MZ.CoreEssentials.checkDependencies({
+    'CXJ_MZ.TextHelper': '1.0.1',
+  }, true);
 
   const {
     CoreEssentials,
@@ -259,7 +295,7 @@
     let newFontFace = fontFace;
     // If the font face is rmmz-mainfont (the default main font) or it hasn't been
     // loaded yet, set to null (the default main font).
-    if (fontFace === 'rmmz-mainfont' || FontManager._state[fontFace] !== 'loaded') {
+    if (fontFace === 'rmmz-mainfont' || !FontHelper.fontLoaded(fontFace)) {
       newFontFace = null;
     }
     $gameSystem.overrideFont(newFontFace);
@@ -304,7 +340,7 @@
   FontHelper.loadFont = (fontFace, filename, fallback = null) => {
     // If the font is either rmmz-mainfont, rmmz-numberfont or a previously defined font,
     // skip loading the font.
-    if (fontFace === 'rmmz-mainfont' || fontFace === 'rmmz-numberfont' || FontManager._state[fontFace]) {
+    if (fontFace === 'rmmz-mainfont' || fontFace === 'rmmz-numberfont' || FontManager._states[fontFace]) {
       return;
     }
 
@@ -312,6 +348,8 @@
     FontManager.load(fontFace, filename);
     fontFallbacks[fontFace] = fallback;
   }
+
+  FontHelper.fontLoaded = (fontFace) => FontManager._states[fontFace] === 'loaded';
 
   /* --------------------------------------------------------------------------
    * - Message codes                                                          -
@@ -355,15 +393,18 @@
      * --------------------------------------------------------------------
      */
 
-    Game_System.prototype.getFontFace = function(fontFace) {
+    Game_System.prototype.getFontFace = function(fontFace, overrideOnly = false) {
       let override = '';
       if (fontFace) {
-        override = `${fontFace}, `;
-        if (fontFallback[fontFace]) {
-          override = `${override}${fontFallback[fontFace]}, `;
+        override = `${fontFace}`;
+        if (fontFallbacks[fontFace]) {
+          override = `, ${override}${fontFallbacks[fontFace]}`;
         }
       }
-      return `${override}${mainFontFace.call(this)}`;
+      if (overrideOnly) {
+        return override;
+      }
+      return `${override ? `${override}, ` : ''}${mainFontFace.call(this)}`;
     }
 
     /* --------------------------------------------------------------------
@@ -413,6 +454,19 @@
 
           FontHelper.loadFont(fontFace, filename, fallback);
         });
+      }
+    });
+
+    /* --------------------------------------------------------------------
+     * - Window_Base.prototype.resetFontSettings (Override)               -
+     * --------------------------------------------------------------------
+     */
+
+    CoreEssentials.registerFunctionExtension('Window_Base.prototype.resetFontSettings', function() {
+      const fontName = `rmmz-windowfont-${this.windowName}`;
+      const windowFont = $gameSystem.getFontFace(fontName, true);
+      if (FontHelper.fontLoaded(fontName) && windowFont) {
+        this.contents.fontFace = windowFont;
       }
     });
   })();

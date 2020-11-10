@@ -222,6 +222,11 @@
  * = Changelog                                                                =
  * ============================================================================
  *
+ * 1.0.1 (2020-11-10)
+ * ------------------
+ *
+ * * Replaced instances of windowName with the property windowName
+ *
  * 1.0 (2020-11-01)
  * ----------------
  *
@@ -369,7 +374,7 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.TextHelper = CXJ_MZ.TextHelper || {};
-  CXJ_MZ.TextHelper.version = '1.0';
+  CXJ_MZ.TextHelper.version = '1.0.1';
 
   if (!CXJ_MZ.CoreEssentials) {
     throw new Error('CoreEssentials has not been initialized. Make sure you load CoreEssentials before this plugin.');
@@ -653,9 +658,8 @@
     const wbConvertEscapeCharacters = CoreEssentials.setNoConflict('Window_Base.prototype.convertEscapeCharacters');
     Window_Base.prototype.convertEscapeCharacters = function(text) {
       let newText = text;
-      const windowName = this.constructor.name.replace(/^Window_/, '').toLowerCase();
-      if (windowName !== 'base') {
-        newText = runConvertEscapeCharacters.call(this, newText, windowName);
+      if (this.windowName !== 'base') {
+        newText = runConvertEscapeCharacters.call(this, newText, this.windowName);
       }
       return runConvertEscapeCharacters.call(this, newText, 'base', wbConvertEscapeCharacters);
     };
@@ -673,15 +677,21 @@
      */
     const wbProcessEscapeCharacter = CoreEssentials.setNoConflict('Window_Base.prototype.processEscapeCharacter');
     Window_Base.prototype.processEscapeCharacter = function(code, textState) {
-      const windowName = this.constructor.name.replace(/^Window_/, '').toLowerCase();
-      if (!['base', 'message'].includes(windowName)) {
-        const found = runProcessEscapeCharacter.call(this, code, textState, windowName);
+      if (!['base', 'message'].includes(this.windowName)) {
+        const found = runProcessEscapeCharacter.call(this, code, textState, this.windowName);
         if (found) {
           return true;
         }
       }
       return runProcessEscapeCharacter.call(this, code, textState, 'base', wbProcessEscapeCharacter);
     }
+
+    Object.defineProperty(Window_Base.prototype, "windowName", {
+      get: function() {
+        return this.constructor.name.replace(/^Window_/, '').toLowerCase();
+      },
+      enumerable: false,
+    });
 
     /* --------------------------------------------------------------------
      * - Window_Message.prototype.processEscapeCharacter (Override)       -

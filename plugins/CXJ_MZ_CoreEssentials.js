@@ -164,6 +164,40 @@
  *
  * ---
  *
+ * CXJ_MZ.CoreEssentials.checkDependencies(dependencies, throwError = false)
+ *
+ * Instead of checking plugins individually, you can also check for multiple plugins
+ * at once.
+ *
+ * To make a list of dependencies, you need an object, where the property names are
+ * the plugin IDs, and the values are the minimum version. If you also need a maximum
+ * version, you'll need to separate both values with a dash.
+ *
+ * You can also define multiple version ranges by instead using an array of version
+ * ranges.
+ *
+ * If you opt to throw an error and there is a missing dependency, it will throw a
+ * MissingPluginDependenciesException. You can directly access this class through
+ * CXJ_MZ.exceptions.MissingPluginDependenciesException.
+ *
+ * Example:
+ *
+ *     CXJ_MZ.CoreEssentials.checkDependencies({
+ *       'CXJ_MZ.CoreEssentials': '1.0-1.2',
+ *     }, true);
+ *
+ * Arguments:
+ *
+ * {object} dependencies - A list of dependencies.
+ * {boolean} throwError  - (optional) Whether to throw an error when a dependency
+ * is missing.
+ *
+ * Returns:
+ *
+ * False if no dependency is missing, otherwise an object with missing dependencies.
+ *
+ * ---
+ *
  * CXJ_MZ.CoreEssentials.simplifyUrl(url)
  *
  * This function simplifies an URL.
@@ -439,6 +473,11 @@
  * = Changelog                                                                =
  * ============================================================================
  *
+ * 1.2 (2020-11-10)
+ * ----------------
+ *
+ * * Added dependencies check function.
+ *
  * 1.1 (2020-10-28)
  * ----------------
  *
@@ -493,8 +532,9 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.CoreEssentials = CXJ_MZ.CoreEssentials || {};
-  CXJ_MZ.CoreEssentials.version = '1.0';
+  CXJ_MZ.CoreEssentials.version = '1.2';
   CXJ_MZ.noConflict = CXJ_MZ.noConflict || {};
+  CXJ_MZ.exceptions = CXJ_MZ.exceptions || {};
 
   const {
     CoreEssentials,
@@ -754,6 +794,41 @@
     return copyObjects({}, defaultParams, processedParams);
   };
 
+  const createMissingDependenciesString = (missingDependencies) => (
+    Object.keys(missingDependencies).reduce((previousValue, plugin) => {
+      const versions = missingDependencies[plugin];
+      const versionsString = versions.reduce((versionArray, version) => {
+        if (version) {
+          const [minVersion, maxVersion = null] = version ? version.split('-') : [ null ];
+          const vStr = version ? `v${minVersion}${maxVersion ? ` - v${maxVersion}` : ''}` : '';
+          versionArray.push(vStr);
+        }
+        return versionArray;
+      }, []).join(', ');
+      return `${previousValue ? '\n' : ''}${plugin}${versionsString ? `: ${versionsString}` : ''}`;
+    }, '')
+  );
+
+  /* --------------------------------------------------------------------------
+   * - Classes                                                                -
+   * --------------------------------------------------------------------------
+   */
+  class MissingPluginDependenciesException extends Error {
+    constructor(message) {
+      super(message);
+      this.name = 'MissingPluginDependenciesException';
+      this.message = `There are missing plugins, or the incorrect versions are loaded.\n\n${isPlainObject(message) ? createMissingDependenciesString(message) : message.toString()}`;
+      // Use V8's native method if available, otherwise fallback
+      if ('captureStackTrace' in Error) {
+        Error.captureStackTrace(this, MissingPluginDependenciesException);
+      } else {
+        this.stack = (new Error()).stack;
+      }
+    }
+  }
+
+  CXJ_MZ.exceptions.MissingPluginDependenciesException = MissingPluginDependenciesException;
+
   /* --------------------------------------------------------------------------
    * - Plugin methods                                                         -
    * --------------------------------------------------------------------------
@@ -856,6 +931,55 @@
       }
     }
     return true;
+  };
+
+  /**
+   * Checks whether dependent plugins have been loaded or not.
+   *
+   * @param {object} dependencies - A list of dependencies.
+   * @param {boolean} throwError - Whether to throw an error instead of returning a value
+   * @returns {object|boolean} The boolean value false if the dependencies have been met,
+   * or an object with the missing dependencies.
+   */
+  CoreEssentials.checkDependencies = (dependencies, throwError = false) => {
+    // We'll first need to create an empty object to store the missing dependencies.
+    const missingDependencies = {};
+
+    // Let's iterate through each dependency.
+    Object.keys(dependencies).forEach((plugin) => {
+      // First, make sure the versions are stored in an array,
+      // and set the version check variable to false.
+      const versions = Array.isArray(dependencies[plugin]) ? dependencies[plugin] : [ dependencies[plugin] ];
+      let isCorrectVersion = false;
+
+      // Now iterate through each version range.
+      versions.every((version) => {
+        // Split the version into minimum and maximum version.
+        const [minVersion, maxVersion = null] = version ? version.split('-') : [ null ];
+
+        // Check whether the current version range matches the plugin loaded.
+        const currentlyCorrect = CoreEssentials.isVersion(plugin, minVersion, maxVersion);
+
+        // If the correct plugin is loaded, no need to check anymore, let's move on to
+        // the next plugin.
+        if (currentlyCorrect) {
+          isCorrectVersion = true;
+          return false;
+        }
+        return true;
+      })
+
+      // If the correct plugin hasn't been found, add it to the missing dependencies list.
+      if (!isCorrectVersion) {
+        missingDependencies[plugin] = versions;
+      }
+    });
+
+    // If we decided to throw an error, and there are missing dependencies, construct the error message.
+    if (throwError && Object.keys(missingDependencies).length) {
+      throw new MissingPluginDependenciesException(missingDependencies);
+    }
+    return Object.keys(missingDependencies).length ? missingDependencies : false;
   };
 
   /**

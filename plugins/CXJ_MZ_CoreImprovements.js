@@ -60,6 +60,45 @@
  *
  * This plugin features various tweaks:
  *
+ * ---------------
+ * Data management
+ * ---------------
+ *
+ * The data management tweaks are primarily for stand-alone games, as web
+ * storage always goes through the browser storage.
+ *
+ * Save location
+ * -------------
+ *
+ * By default, RPG Maker MZ games store the save file in the application
+ * path. This tweak allows you to store it in the data path instead. In
+ * NW.js, this path depends on the OS. This also comes with the caveat
+ * that you do need to modify the application name in the package.json.
+ *
+ * There's an additional option that uses the root folder of the data
+ * path, since the data path actually directs to a folder within the
+ * main folder, for example, on Windows, this path would be
+ * %localappdata%/<app-name>/User Data/Default. This extra option would
+ * reduce it to %localappdata%/<app-name>. Do note that the regular
+ * data path is safer to use, and you're more certain your OS won't
+ * reject it.
+ *
+ * Finally, you can save your saves in the home folder. Files will be stored
+ * in a subfolder with the application name.
+ *
+ * Save folder
+ * -----------
+ *
+ * The default save folder is 'save', which will automatically be made in
+ * the save location folder.
+ *
+ * Save file extension
+ * -------------------
+ *
+ * RPG Maker MZ picks the "rmmzsave" extension as the file extension of
+ * choice for save games. However, you might want to change this for your
+ * game if you so choose.
+ *
  * -------------------
  * Script event tweaks
  * -------------------
@@ -107,6 +146,9 @@
  * not the plugin is compatible with other plugins by checking which functions
  * they overwrite. Below is the list of methods it overwrites:
  *
+ * * StoreManager.fsMkdir
+ * * StorageManager.fileDirectoryPath
+ * * StorageManager.filePath
  * * Game_Interpreter.prototype.command355
  *
  * ============================================================================
@@ -134,6 +176,32 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * ============================================================================
+ *
+ * @param dataManagement
+ * @text Data management
+ *
+ * @param dataManagement.saveLocation
+ * @text Save location
+ * @desc Where the save data should be saved.
+ * @parent dataManagement
+ * @type select
+ * @default app
+ * @option Application path
+ * @value app
+ * @option Data path
+ * @value dataPath
+ * @option Data path root
+ * @value dataPathRoot
+ *
+ * @param dataManagement.saveFolder
+ * @text Save folder
+ * @type text
+ * @default save
+ *
+ * @param dataManagement.saveExtension
+ * @text Save file extension
+ * @type text
+ * @default rmmzsave
  *
  * @param scriptEvent
  * @text Script event tweaks
@@ -181,14 +249,81 @@
    */
 
   const parameters = CoreEssentials.getParameters('CXJ_MZ_CoreImprovements', {
+    'dataManagement.saveLocation': 'app',
+    'dataManagement.saveFolder': 'save',
+    'dataManagement.saveExtension': 'rmmzsave',
     'scriptEvent.combineMultipleScripts': true,
     'scriptEvent.optimizeScriptExecution': true,
   }, {
+    'dataManagement.saveLocation': 'text',
+    'dataManagement.saveFolder': 'text',
+    'dataManagement.saveExtension': 'text',
     'scriptEvent.combineMultipleScripts': 'boolean',
     'scriptEvent.optimizeScriptExecution': 'boolean',
   });
 
   (() => {
+
+    /* --------------------------------------------------------------------
+     * - StoreManager.fsMkdir (Override)                                  -
+     * --------------------------------------------------------------------
+     */
+
+    CoreEssentials.setNoConflict('StoreManager.fsMkdir');
+    StorageManager.fsMkdir = function(path) {
+      const fs = require('fs');
+      if (!fs.existsSync(path)) {
+        // Ensures that folders are created recursively.
+        fs.mkdirSync(path, {
+          recursive: true,
+        });
+      }
+    };
+
+    /* --------------------------------------------------------------------
+     * - StorageManager.fileDirectoryPath (Override)                      -
+     * --------------------------------------------------------------------
+     */
+
+    CoreEssentials.setNoConflict('StorageManager.fileDirectoryPath');
+    StorageManager.fileDirectoryPath = function() {
+      const path = require('path');
+      const os = require('os');
+      let base = '';
+      const saveLocation = parameters['dataManagement.saveLocation'];
+      // We'll need to make sure there's a trailing slash in the path name.
+      const saveFolder = parameters['dataManagement.saveFolder'].replace(/[\\\/]*$/, '/');
+      const appName = nw.App.manifest.name;
+      switch (saveLocation) {
+        case 'dataPath':
+          base = nw.App.basePath;
+          break;
+        case 'dataPathRoot':
+          base = nw.App.basePath;
+          base = base.slice(0, base.indexOf(appName) + appName.length);
+          break;
+        case 'home':
+          base = path.join(os.homedir(), appName);
+        case 'app':
+        default:
+          base = global.__dirname;
+          break;
+      }
+      return path.join(base, saveFolder);
+    };
+
+    /* --------------------------------------------------------------------
+     * - StorageManager.filePath (Override)                               -
+     * --------------------------------------------------------------------
+     */
+
+    CoreEssentials.setNoConflict('StorageManager.filePath');
+    StorageManager.filePath = function(saveName) {
+      const dir = this.fileDirectoryPath();
+      const ext = parameters['dataManagement.saveExtension'].replace(/^\.*/, '.');
+      return `${dir}${saveName}${ext}`;
+    };
+
     /* --------------------------------------------------------------------
      * - Game_Interpreter.prototype.command355 (Override)                 -
      * --------------------------------------------------------------------
