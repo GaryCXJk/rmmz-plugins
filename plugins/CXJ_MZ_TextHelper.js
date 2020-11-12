@@ -222,6 +222,11 @@
  * = Changelog                                                                =
  * ============================================================================
  *
+ * 1.0.2 (2020-11-11)
+ * ------------------
+ *
+ * * Changed callback parameter types from note to multiline_string.
+ *
  * 1.0.1 (2020-11-10)
  * ------------------
  *
@@ -310,7 +315,7 @@
  *
  * @param callback
  * @text Callback
- * @type note
+ * @type multiline_string
  *
  * @param type
  * @text Type
@@ -365,7 +370,7 @@
  *
  * @param callback
  * @text Callback
- * @type note
+ * @type multiline_string
  */
 
 (() => {
@@ -374,10 +379,14 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.TextHelper = CXJ_MZ.TextHelper || {};
-  CXJ_MZ.TextHelper.version = '1.0.1';
+  CXJ_MZ.TextHelper.version = '1.0.2';
 
   if (!CXJ_MZ.CoreEssentials) {
     throw new Error('CoreEssentials has not been initialized. Make sure you load CoreEssentials before this plugin.');
+  }
+
+  if (!CXJ_MZ.CoreEssentials.isVersion('CXJ_MZ.CoreEssentials', '1.3')) {
+    throw new Error('The correct version of CoreEssentials has not been loaded (required version: 1.3).');
   }
 
   const {
@@ -409,12 +418,12 @@
     'textParser.escapeBrackets': 'boolean',
     'textParser.messageCodes': ['array', 'object', {
       code: 'text',
-      callback: 'note',
+      callback: 'text',
       type: 'text',
       parameterNames: ['array', 'text'],
       escapeBrackets: 'literal',
-      location: 'string',
-      locationOther: 'string',
+      location: 'text',
+      locationOther: 'text',
     }],
     waitModes: ['array', 'object', {
       waitMode: 'text',

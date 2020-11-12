@@ -30,6 +30,7 @@
  * @target MZ
  * @plugindesc Core plugin for all other CXJ_MZ scripts.
  * @author G.A.M. Kertopermono
+ * @url https://area91.garycxjk.com/rmmz/plugins/core/core-essentials
  *
  * @help
  * ============================================================================
@@ -469,9 +470,43 @@
  *                        to storing and reading the value to / from the
  *                        ConfigManager object.
  *
+ * ------
+ * Tweaks
+ * ------
+ *
+ * A few tweaks have been added to this plugin. These override the default
+ * functionality of existing functions and methods that can give developers
+ * more options to work with, in most cases they add new parameters.
+ *
+ * ---
+ *
+ * Window_Command.prototype.addCommand(name, symbol, enabled = true, ext = null,
+ *                                         index = null)
+ *
+ * This method allows you to add a command to the current window.
+ *
+ * Arguments:
+ *
+ * {string} name     - The visible text of the command.
+ * {string} symbol   - An identifier that will be used by the scene.
+ * {boolean} enabled - (optional) Whether the command is enabled or not.
+ * {*} ext           - (optional) Additional data.
+ * {number} index    - (optional) Where you want to insert the command. Set to
+ *                     null to place it at the very end. Setting it at a
+ *                     negative number will place it from the end.
+ *
+ * ---
+ *
  * ============================================================================
  * = Changelog                                                                =
  * ============================================================================
+ *
+ * 1.3 (2020-11-??)
+ * ----------------
+ *
+ * * Window_Command.prototype.addCommand adjustment: Added new parameter index.
+ * * Fixed: Issues with functions when multiline_string is used instead of
+ *   note.
  *
  * 1.2 (2020-11-10)
  * ----------------
@@ -498,6 +533,7 @@
  *
  * * ConfigManager.makeData
  * * ConfigManager.applyData
+ * * Window_Command.prototype.addCommand
  *
  * ============================================================================
  * = License                                                                  =
@@ -532,7 +568,7 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.CoreEssentials = CXJ_MZ.CoreEssentials || {};
-  CXJ_MZ.CoreEssentials.version = '1.2';
+  CXJ_MZ.CoreEssentials.version = '1.3';
   CXJ_MZ.noConflict = CXJ_MZ.noConflict || {};
   CXJ_MZ.exceptions = CXJ_MZ.exceptions || {};
 
@@ -769,7 +805,15 @@
       case 'literal':
         return JSON.parse(value);
       case 'function':
-        return new Function(JSON.parse(value));
+        let str = value;
+        // If the type was a note, we'll need to JSON parse the string, otherwise,
+        // we'll leave the string intact.
+        try {
+          str = JSON.parse(str);
+        } catch (e) {
+          // Do nothing
+        }
+        return new Function(str);
       default:
         return value;
     }
@@ -1298,6 +1342,34 @@
           this[key] = config[key];
         }
       });
+    };
+
+    /* --------------------------------------------------------------------
+     * - Window_Command.prototype.addCommand (Override)                   -
+     * --------------------------------------------------------------------
+     */
+
+    /**
+     * @method addCommand
+     * @param {string} name - The label of the command option.
+     * @param {string} symbol - The symbol that gets referenced for executing
+     * in the scene.
+     * @param {boolean} enabled - Whether the option is enabled or not.
+     * @param {*} ext - Additional data attached to the command.
+     * @param {number} index - The index where the menu item needs to be added.
+     */
+    CoreEssentials.setNoConflict('Window_Command.prototype.addCommand');
+    Window_Command.prototype.addCommand = function(
+      name, symbol, enabled = true, ext = null, index = null
+    ) {
+      const commandData = { name: name, symbol: symbol, enabled: enabled, ext: ext };
+      if (index === null || Number.isNaN(+index)) {
+        this._list.push(commandData);
+      } else if (index === 0) {
+        this._list.unshift(commandData);
+      } else {
+        this._list.splice(index, 0, commandData);
+      }
     };
   })();
 })();
