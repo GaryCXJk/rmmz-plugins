@@ -126,6 +126,23 @@
  *
  * ---
  *
+ * CXJ_MZ.CoreEssentials.copyArray(arr)
+ *
+ * This copies an array.
+ *
+ * This makes a deep copy of the array, in the same way CXJ_MZ.CoreEssentials.copyObject
+ * makes a deep copy of an object.
+ *
+ * Arguments:
+ *
+ * {any[]} arr - The array to copy.
+ *
+ * Returns:
+ *
+ * A copy of the array.
+ *
+ * ---
+ *
  * CXJ_MZ.CoreEsentials.findObject(strObj, root = window)
  *
  * A helper function to help you find an object from a string. This is primarily used
@@ -487,26 +504,31 @@
  *
  * Arguments:
  *
- * {string} name     - The visible text of the command.
- * {string} symbol   - An identifier that will be used by the scene.
- * {boolean} enabled - (optional) Whether the command is enabled or not.
- * {*} ext           - (optional) Additional data.
- * {number} index    - (optional) Where you want to insert the command. Set to
- *                     null to place it at the very end. Setting it at a
- *                     negative number will place it from the end.
- *
- * ---
+ * {string} name              - The visible text of the command.
+ * {string} symbol            - An identifier that will be used by the scene.
+ * {boolean|function} enabled - (optional) Whether the command is enabled or not.
+ *                              When used as a function, it has to return a boolean.
+ * {*} ext                    - (optional) Additional data.
+ * {number} index             - (optional) Where you want to insert the command. Set to
+ *                              null to place it at the very end. Setting it at a
+ *                              negative number will place it from the end.
  *
  * ============================================================================
  * = Changelog                                                                =
  * ============================================================================
  *
- * 1.3 (2020-11-??)
+ * 1.3.1 (2020-11-16)
+ * * Window_Command.prototype.isCommandEnabled will now properly process
+ *   callback functions when used instead of boolean values.
+ *
+ * 1.3 (2020-11-15)
  * ----------------
  *
  * * Window_Command.prototype.addCommand adjustment: Added new parameter index.
  * * Fixed: Issues with functions when multiline_string is used instead of
  *   note.
+ * * Improvement: CXJ_MZ.CoreEssentials.simplifyUrl now uses path.normalize
+ *   if run inside NW.js or other node.js-based browsers.
  *
  * 1.2 (2020-11-10)
  * ----------------
@@ -534,6 +556,7 @@
  * * ConfigManager.makeData
  * * ConfigManager.applyData
  * * Window_Command.prototype.addCommand
+ * * Window_Command.prototype.isCommandEnabled
  *
  * ============================================================================
  * = License                                                                  =
@@ -568,7 +591,7 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.CoreEssentials = CXJ_MZ.CoreEssentials || {};
-  CXJ_MZ.CoreEssentials.version = '1.3';
+  CXJ_MZ.CoreEssentials.version = '1.3.1';
   CXJ_MZ.noConflict = CXJ_MZ.noConflict || {};
   CXJ_MZ.exceptions = CXJ_MZ.exceptions || {};
 
@@ -1042,6 +1065,11 @@
    * @return {string} The simplified URL.
    */
   CoreEssentials.simplifyUrl = (url) => {
+    if (Utils.isNwjs()) {
+      // If in NW.js or other node.js-based browser wrappers, use the path.normalize method instead.
+      const path = require('path').posix;
+      return path.normalize(url);
+    }
     const urlSegments = url.split('/');
     for (let idx = ['', '.'].includes(urlSegments[0]) ? 1 : 0; idx < urlSegments.length; idx++) {
       if (urlSegments[idx] === '.') {
@@ -1371,5 +1399,16 @@
         this._list.splice(index, 0, commandData);
       }
     };
+
+    /**
+     * @method isCommandEnabled
+     * @param {number} index - The command index.
+     */
+    CoreEssentials.setNoConflict('Window_Command.prototype.isCommandEnabled');
+    Window_Command.prototype.isCommandEnabled = function(index) {
+      const { enabled } = this._list[index];
+      return typeof enabled === 'function' ? enabled() : enabled;
+    };
+
   })();
 })();

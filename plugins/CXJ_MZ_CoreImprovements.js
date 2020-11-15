@@ -99,6 +99,15 @@
  * choice for save games. However, you might want to change this for your
  * game if you so choose.
  *
+ * Configuration settings file name
+ * --------------------------------
+ *
+ * By default, the configuration file is config.rmmzsave, or, if the save
+ * file extension has been edited, that extension will be used. However,
+ * with this setting, you can define your own config file name. Make sure
+ * you however add the extension manually. Leave empty if you want to
+ * use the default.
+ *
  * -------------------
  * Script event tweaks
  * -------------------
@@ -203,6 +212,12 @@
  * @type text
  * @default rmmzsave
  *
+ * @param dataManagement.configFile
+ * @text Configuration settings file name
+ * @desc The game settings will be stored and read here.
+ * Leave empty for default (config.<Save file extension>).
+ * @type text
+ *
  * @param scriptEvent
  * @text Script event tweaks
  *
@@ -252,12 +267,14 @@
     'dataManagement.saveLocation': 'app',
     'dataManagement.saveFolder': 'save',
     'dataManagement.saveExtension': 'rmmzsave',
+    'dataManagement.configFile': '',
     'scriptEvent.combineMultipleScripts': true,
     'scriptEvent.optimizeScriptExecution': true,
   }, {
     'dataManagement.saveLocation': 'text',
     'dataManagement.saveFolder': 'text',
     'dataManagement.saveExtension': 'text',
+    'dataManagement.configFile': 'text',
     'scriptEvent.combineMultipleScripts': 'boolean',
     'scriptEvent.optimizeScriptExecution': 'boolean',
   });
@@ -321,7 +338,8 @@
     StorageManager.filePath = function(saveName) {
       const dir = this.fileDirectoryPath();
       const ext = parameters['dataManagement.saveExtension'].replace(/^\.*/, '.');
-      return `${dir}${saveName}${ext}`;
+      const saveFile = parameters[`dataManagement.${saveName}File`] || `${saveName}${ext}`;
+      return `${dir}${saveFile}`;
     };
 
     /* --------------------------------------------------------------------

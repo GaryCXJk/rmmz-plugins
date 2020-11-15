@@ -50,7 +50,7 @@
  *
  * This plugin requires the following plugins to work:
  *
- * * CXJ_MZ.CoreEssentials: ^1.0
+ * * CXJ_MZ.CoreEssentials: ^1.3
  *
  * ============================================================================
  * = Placement                                                                =

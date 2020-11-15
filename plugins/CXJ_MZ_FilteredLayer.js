@@ -82,7 +82,12 @@
  * = Changelog                                                                =
  * ============================================================================
  *
- * 1.0 (2020-10-26)
+ * 1.0.1 (2020-11-13)
+ * ------------------
+ *
+ * * Used filterArea instead of a dummy Graphics object.
+ *
+ * 1.0 (2020-11-12)
  * ----------------
  *
  * * Initial release.
@@ -130,7 +135,7 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.FilteredLayer = CXJ_MZ.FilteredLayer || {};
-  CXJ_MZ.FilteredLayer.version = '1.0';
+  CXJ_MZ.FilteredLayer.version = '1.0.1';
 
   // Store the original Layer object prototype.
   const LayerContent = Tilemap.Layer;
@@ -140,13 +145,11 @@
     constructor() {
       super();
 
-      // We'll create a dummy object, so that the layer container has a size.
-      const dummy = new PIXI.Graphics();
+      // Let's set the filter area first.
+      this.filterArea = new Rectangle(0, 0, Graphics.width, Graphics.height);
+
       this._layerContent = new LayerContent();
 
-      dummy.drawRect(0, 0, Graphics.width, Graphics.height);
-
-      this.addChild(dummy);
       this.addChild(this._layerContent);
     }
 

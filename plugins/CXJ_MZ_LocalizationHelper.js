@@ -282,6 +282,11 @@
  * @desc Use the language code defined in the "Languages" parameter.
  * @default en
  *
+ * @param localizationFolder
+ * @text Localization folder
+ * @desc Where the localization files are located.
+ * @default data/localization
+ *
  */
 /*~struct~Language:
  * @param language
