@@ -69,6 +69,91 @@
  * Instead, two new classes have been created, Window_OptionsExt and
  * Scene_OptionsExt, which are both accessible from CXJ_MZ.CategorizeOptions.
  *
+ * --------------
+ * For developers
+ * --------------
+ *
+ * For plugin developers, there are various hooks.
+ *
+ * ---
+ *
+ * CXJ_MZ.CategorizeOptions.addOption(name, symbol, options = {})
+ *
+ * This is the main portion of the plugin. It allows you to add a new option
+ * to the options menu.
+ *
+ * By default, there are three types, category, boolean and volume. The
+ * category type allows you to create (sub)categories. The symbol defines the
+ * category identifier, which you can use with the category property of the
+ * options object.
+ *
+ * In any other case, the symbol functions as the property selector of the
+ * ConfigManager. You can also select properties inside objects you've
+ * stored in the ConfigManager, by using a dot, in case you ever need to
+ * directly select a certain property.
+ *
+ * Arguments:
+ *
+ * {string|function} name         - The label. Can be a function that returns
+ *                                  a string.
+ * {string} symbol                - The symbol name.
+ * {object} options               - Extra options.
+ *     {boolean|function} enabled - Whether the option is enabled or not.
+ *     {*} ext                    - Additional data.
+ *     {string} type              - The option type. By default, category,
+ *                                - boolean and volume are enabled.
+ *     {string} category          - The category it should be added to.
+ *                                  Defaults to '' (the root menu).
+ *     {number} index             - Where the option should be inserted.
+ *
+ * ---
+ *
+ * CXJ_MZ.CategorizeOptions.addItemCallbacks(type, callbacks)
+ *
+ * In order to allow developers to easily add new option types, callbacks
+ * are implemented. It's also implemented in a way that you can actually
+ * override individual callbacks, or add new ones. By default, the following
+ * callbacks have been implemented:
+ *
+ * * render(index)
+ * * ok(index)
+ * * change(index, forward)
+ * * getSize(index)
+ *
+ * Arguments:
+ *
+ * {string} type         - The option type to add a callback for.
+ * {object} callbacks    - The callbacks you want to store.
+ *
+ * ---
+ *
+ * CXJ_MZ.CategorizeOptions.getItemCallbacks(type, callbackType = null)
+ *
+ * This allows you to retrieve all callbacks of a certain type, or a
+ * specific callback.
+ *
+ * Arguments:
+ *
+ * {string} type    - The option type to retrieve the callbacks for.
+ * {*} callbackType - The type of callback to be retrieved. Leave
+ *                    null to get every callback.
+ *
+ * Returns:
+ *
+ * An object containing all callbacks, the requested callback function if
+ * callbackType is not null, or null if the type doesn't have a callback
+ * or the callback function does not exist.
+ *
+ * -----------------
+ * Plugin parameters
+ * -----------------
+ *
+ * Empty menu
+ * ----------
+ *
+ * This allows you to start off without any options. This is mainly for those
+ * who wish to build their own options menu from scratch.
+ *
  * ============================================================================
  * = Changelog                                                                =
  * ============================================================================
@@ -117,6 +202,20 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * ============================================================================
+ *
+ * @param emptyMenu
+ * @text Empty menu
+ * @desc Start off with an empty options menu.
+ * @type boolean
+ * @default false
+ * @on Yes
+ * @off No
+ *
+ * @param windowWidth
+ * @text Window width
+ * @desc The width of the options window.
+ * @type number
+ * @default 400
  *
  * @param booleanWrap
  * @text Wrap boolean options
@@ -304,6 +403,8 @@
   };
 
   const parameters = CoreEssentials.getParameters(pluginName, {
+    emptyMenu: false,
+    windowWidth: 400,
     booleanWrap: false,
     booleanDisplay: 'toggle',
     volumeDisplay: 'numeric',
@@ -337,6 +438,8 @@
     'text.optionOff': 'OFF',
     'text.audioMasterVolume': 'Master Volume',
   }, {
+    emptyMenu: 'boolean',
+    windowWidth: 'number',
     booleanWrap: 'boolean',
     booleanDisplay: 'text',
     volumeDisplay: 'text',
@@ -369,10 +472,25 @@
    * --------------------------------------------------------------------------
    */
 
+  /**
+   * Retrieves a string from the TextManager.
+   * @param {string} symbol - The symbol of the option.
+   * @returns {string} The requested text string.
+   */
   fromTextManager = (symbol) => TextManager[symbol];
 
+  /**
+   * Retrieves a string from the parameters.
+   * @param {string} key => The string key.
+   * @returns {string} The requested text string.
+   */
   getText = (key) => parameters[`text.${key}`] || '';
 
+  /**
+   * Converts the given color values to a valid color.
+   * @param {object} color - A color object, as defined in the parameter struct.
+   * @returns {string} A valid color string.
+   */
   colorToRgba = (color) => (
       color.systemColor > -1
       ? ColorManager.textColor(color.systemColor)
@@ -392,6 +510,7 @@
    * @param {object} options - Extra options.
    */
   CategorizeOptions.addOption = (name, symbol, options = {}) => {
+    // Let's destructure the options parameter.
     const {
       enabled = true,
       ext = null,
@@ -400,6 +519,7 @@
       index = null,
     } = options;
 
+    // Now create the data variable.
     const data = {
       name,
       symbol,
@@ -408,8 +528,11 @@
       type,
     };
 
+    // Ensure that the category array exists.
     categoryOptions[category] = categoryOptions[category] || [];
 
+    // Now, depending on what the value of index is, insert the data
+    // somewhere in the array.
     if (index === null || Number.isNaN(+index)) {
       categoryOptions[category].push(data);
     } else if (index === 0) {
@@ -419,6 +542,11 @@
     }
   };
 
+  /**
+   * Add callbacks for certain option types.
+   * @param {string} type - The option type to add a callback for.
+   * @param {object} callbacks - The callbacks you want to store.
+   */
   CategorizeOptions.addItemCallbacks = (type, callbacks) => {
     typeCallbacks[type] = {
       ...(typeCallbacks[type] || {}),
@@ -426,6 +554,16 @@
     };
   }
 
+  /**
+   * Retrieves the stored callbacks.
+   * @param {string} type - The option type to retrieve the callbacks for.
+   * @param {*} callbackType - The type of callback to be retrieved. Leave
+   * null to get every callback.
+   * @returns {object|function} An object containing all callbacks, the
+   * requested callback function if callbackType is not null, or null if
+   * the type doesn't have a callback or the callback function does not
+   * exist.
+   */
   CategorizeOptions.getItemCallbacks = (type, callbackType = null) => {
     if (!typeCallbacks[type]) {
       return null;
@@ -439,24 +577,28 @@
     return callbacks[callbackType] || null;
   }
 
+  // To make it easier to create the options, destructure the CategorizeOptions
+  // object.
   const {
     addOption,
     addItemCallbacks,
     getItemCallbacks,
   } = CategorizeOptions;
 
-  addOption(getText.bind(null, 'categoryGameplay'), 'gameplay', { type: 'category' });
-  addOption(getText.bind(null, 'categoryAudio'),    'audio',    { type: 'category' });
+  if (!parameters.emptyMenu) {
+    addOption(getText.bind(null, 'categoryGameplay'), 'gameplay', { type: 'category' });
+    addOption(getText.bind(null, 'categoryAudio'),    'audio',    { type: 'category' });
 
-  addOption(fromTextManager, 'alwaysDash',      { type: 'boolean', category: 'gameplay' });
-  addOption(fromTextManager, 'commandRemember', { type: 'boolean', category: 'gameplay' });
-  addOption(fromTextManager, 'touchUI',         { type: 'boolean', category: 'gameplay' });
+    addOption(fromTextManager, 'alwaysDash',      { type: 'boolean', category: 'gameplay' });
+    addOption(fromTextManager, 'commandRemember', { type: 'boolean', category: 'gameplay' });
+    addOption(fromTextManager, 'touchUI',         { type: 'boolean', category: 'gameplay' });
 
-  addOption(getText.bind(null, 'audioMasterVolume'), 'masterVolume', { type: 'volume', category: 'audio' });
-  addOption(fromTextManager, 'bgmVolume', { type: 'volume', category: 'audio' });
-  addOption(fromTextManager, 'bgsVolume', { type: 'volume', category: 'audio' });
-  addOption(fromTextManager, 'meVolume',  { type: 'volume', category: 'audio' });
-  addOption(fromTextManager, 'seVolume',  { type: 'volume', category: 'audio' });
+    addOption(getText.bind(null, 'audioMasterVolume'), 'masterVolume', { type: 'volume', category: 'audio' });
+    addOption(fromTextManager, 'bgmVolume', { type: 'volume', category: 'audio' });
+    addOption(fromTextManager, 'bgsVolume', { type: 'volume', category: 'audio' });
+    addOption(fromTextManager, 'meVolume',  { type: 'volume', category: 'audio' });
+    addOption(fromTextManager, 'seVolume',  { type: 'volume', category: 'audio' });
+  }
 
   addItemCallbacks('category', {
     render: function(index) {
@@ -548,7 +690,7 @@
         const status = this.statusText(index);
         this.drawText(status, rect.x + titleWidth, rect.y, statusWidth, "right");
       }
-    }
+    },
   });
 
   (() => {
@@ -579,7 +721,7 @@
           }
         });
 
-        const windowWidth = 400;
+        const windowWidth = parameters.windowWidth > 0 ? parameters.windowWidth : Graphics.boxWidth - parameters.windowWidth;
         const windowX = (Graphics.boxWidth - windowWidth) / 2;
         const windowY = (Graphics.boxHeight - windowHeight) / 2;
         return new Rectangle(windowX, windowY, windowWidth, windowHeight);

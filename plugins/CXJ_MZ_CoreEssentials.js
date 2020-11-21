@@ -497,6 +497,25 @@
  *
  * ---
  *
+ * Window_Base.prototype.drawIcon(iconIndex, x, y, bitmap = null, options = {})
+ *
+ * This method allows you to draw an icon at a specified location.
+ *
+ * Arguments:
+ *
+ *
+ * {number} iconIndex       - The index of the requested icon.
+ * {number} x               - The x-coordinate of where the icon should be drawn.
+ * {number} y               - The y-coordinate of where the icon should be drawn.
+ * {Bitmap} bitmap          - (optional) The bitmap that contains the icon.
+ * {object} options         - (optional) A set of options that define how an icon
+ *                            should be read. These properties are:
+ *     {number} iconWidth   - The width of the icon.
+ *     {number} iconHeight  - The height of the icon.
+ *     {number} iconsPerRow - The amount of icons per row.
+ *
+ * ---
+ *
  * Window_Command.prototype.addCommand(name, symbol, enabled = true, ext = null,
  *                                         index = null)
  *
@@ -517,7 +536,15 @@
  * = Changelog                                                                =
  * ============================================================================
  *
+ * 1.4 (2020-11-21)
+ * ----------------
+ *
+ * * Window_Base.prototype.drawIcon now allows you to define your own bitmap
+ *   and icon settings.
+ *
  * 1.3.1 (2020-11-16)
+ * ------------------
+ *
  * * Window_Command.prototype.isCommandEnabled will now properly process
  *   callback functions when used instead of boolean values.
  *
@@ -555,6 +582,7 @@
  *
  * * ConfigManager.makeData
  * * ConfigManager.applyData
+ * * Window_Base.prototype.drawIcon
  * * Window_Command.prototype.addCommand
  * * Window_Command.prototype.isCommandEnabled
  *
@@ -591,7 +619,7 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.CoreEssentials = CXJ_MZ.CoreEssentials || {};
-  CXJ_MZ.CoreEssentials.version = '1.3.1';
+  CXJ_MZ.CoreEssentials.version = '1.4';
   CXJ_MZ.noConflict = CXJ_MZ.noConflict || {};
   CXJ_MZ.exceptions = CXJ_MZ.exceptions || {};
 
@@ -1373,6 +1401,36 @@
     };
 
     /* --------------------------------------------------------------------
+     * - Window_Base.prototype.drawIcon (Override)                        -
+     * --------------------------------------------------------------------
+     */
+
+    /**
+     * @method drawIcon
+     * @param {number} iconIndex - The index of the requested icon.
+     * @param {number} x - The x-coordinate of where the icon should be drawn.
+     * @param {number} y - The y-coordinate of where the icon should be drawn.
+     * @param {Bitmap} bitmap - The bitmap that contains the icon.
+     * @param {object} options - A set of options that define how an icon
+     * should be read.
+     */
+    CoreEssentials.setNoConflict('Window_Base.prototype.drawIcon');
+    Window_Base.prototype.drawIcon = function(iconIndex, x, y, bitmap = null, options = {}) {
+      let realBitmap = null;
+      if (bitmap && bitmap instanceof Bitmap) {
+        realBitmap = bitmap;
+      } else {
+        realBitmap = ImageManager.loadSystem('IconSet');
+      }
+      const iconsPerRow = options.iconsPerRow || 16;
+      const pw = options.iconWidth || ImageManager.iconWidth;
+      const ph = options.iconHeight || ImageManager.iconHeight;
+      const sx = (iconIndex % iconsPerRow) * pw;
+      const sy = Math.floor(iconIndex / iconsPerRow) * ph;
+      this.contents.blt(realBitmap, sx, sy, pw, ph, x, y);
+    };
+
+    /* --------------------------------------------------------------------
      * - Window_Command.prototype.addCommand (Override)                   -
      * --------------------------------------------------------------------
      */
@@ -1399,6 +1457,11 @@
         this._list.splice(index, 0, commandData);
       }
     };
+
+    /* --------------------------------------------------------------------
+     * - Window_Command.prototype.isCommandEnabled (Override)             -
+     * --------------------------------------------------------------------
+     */
 
     /**
      * @method isCommandEnabled
