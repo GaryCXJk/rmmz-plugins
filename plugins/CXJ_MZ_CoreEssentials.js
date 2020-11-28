@@ -536,6 +536,14 @@
  * = Changelog                                                                =
  * ============================================================================
  *
+ * 1.4.1 (2020-11-23)
+ * ------------------
+ *
+ * * Fixed: Versions wouldn't properly validate in certain cases where the
+ *   version to check for has a higher version depth count than the actual
+ *   plugin (for example, requested version 1.2.1 and plugin version 1.3 would
+ *   still return false).
+ *
  * 1.4 (2020-11-21)
  * ----------------
  *
@@ -619,7 +627,7 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.CoreEssentials = CXJ_MZ.CoreEssentials || {};
-  CXJ_MZ.CoreEssentials.version = '1.4';
+  CXJ_MZ.CoreEssentials.version = '1.4.1';
   CXJ_MZ.noConflict = CXJ_MZ.noConflict || {};
   CXJ_MZ.exceptions = CXJ_MZ.exceptions || {};
 
@@ -1023,6 +1031,11 @@
         if (+curNum > +maxNum) {
           return false;
         }
+        if (+curNum < +maxNum && +curNum > +minNum) {
+          return true;
+        }
+      } else if (+curNum > +minNum) {
+        return true;
       }
     }
     return true;

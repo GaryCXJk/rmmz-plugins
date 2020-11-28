@@ -128,6 +128,11 @@
  * Font face     - The name of the font.
  * Font filename - The font file name.
  * Font fallback - The fallback font.
+ * Font aliases  - Allows you to add aliases for the font.
+ *
+ * As a side note, aliasing fonts acts pretty much the same as defining
+ * multiple instances of a font with the same file name. This will just
+ * simplify the process.
  *
  * ---------------
  * Plugin commands
@@ -156,6 +161,20 @@
  * ============================================================================
  * = Changelog                                                                =
  * ============================================================================
+ *
+ * 1.1.2 (2020-11-23)
+ * ------------------
+ *
+ * * Added: Easier way to define a font multiple times through font aliases.
+ * * Fixed: Overriding fonts through event commands wouldn't work if you
+ *   already have overridden the font through the font family.
+ *
+ * 1.1.1 (2020-11-23)
+ * ------------------
+ *
+ * * Fixed: font[] code wouldn't properly register.
+ * * Fixed: font[] wouldn't switch back to the window specific font.
+ * * Fixed: font[:any] wouldn't switch to the proper font correctly.
  *
  * 1.1 (2020-11-10)
  * ----------------
@@ -249,6 +268,11 @@
  * @param fallback
  * @text Font fallback
  * @type text
+ *
+ * @param aliases
+ * @text Font aliases
+ * @desc Allows you to alias a font.
+ * @type text[]
  */
 
 (() => {
@@ -257,7 +281,7 @@
     CXJ_MZ
   } = window;
   CXJ_MZ.FontHelper = CXJ_MZ.FontHelper || {};
-  CXJ_MZ.FontHelper.version = '1.1';
+  CXJ_MZ.FontHelper.version = '1.1.2';
 
   if (!CXJ_MZ.CoreEssentials) {
     throw new Error('CoreEssentials has not been initialized. Make sure you load CoreEssentials before this plugin.');
@@ -315,6 +339,7 @@
       fontFace: 'text',
       filename: 'text',
       fallback: 'text',
+      alias: ['array', 'text'],
     }],
   });
 
@@ -358,11 +383,22 @@
 
   // If no font has been specified, default to the default font.
   TextHelper.addMessageCode('font\\[\\]', function() {
-    this.contents.fontFace = $gameSystem.mainFontFace();
-  }, false);
+    let fontSet = false;
+    if (!$gameSystem.hasFontOverride()) {
+      const fontName = `rmmz-windowfont-${this.windowName}`;
+      const windowFont = $gameSystem.getFontFace(fontName, true);
+      if (FontHelper.fontLoaded(fontName) && windowFont) {
+        this.contents.fontFace = windowFont;
+        fontSet = true;
+      }
+    }
+    if (!fontSet) {
+      this.contents.fontFace = $gameSystem.mainFontFace();
+    }
+  }, 'process', false);
 
   // Otherwise load the font.
-  TextHelper.addMessageCode('font[:any]', function(fontFace) {
+  TextHelper.addMessageCode('font[:any]', function(_textState, fontFace) {
     const realFontFace = fontFace === 'rmmz-mainfont' ? null : fontFace;
     this.contents.fontFace = $gameSystem.getFontFace(realFontFace);
   }, 'process', true);
@@ -398,7 +434,7 @@
       if (fontFace) {
         override = `${fontFace}`;
         if (fontFallbacks[fontFace]) {
-          override = `, ${override}${fontFallbacks[fontFace]}`;
+          override = `${override}, ${fontFallbacks[fontFace]}`;
         }
       }
       if (overrideOnly) {
@@ -414,6 +450,15 @@
 
     Game_System.prototype.overrideFont = function(fontFace) {
       this._fontOverride = fontFace;
+    }
+
+    /* --------------------------------------------------------------------
+     * - Game_System.prototype.hasFontOverride (New)                      -
+     * --------------------------------------------------------------------
+     */
+
+    Game_System.prototype.hasFontOverride = function() {
+      return this._fontOverride !== null;
     }
 
     /* --------------------------------------------------------------------
@@ -450,9 +495,16 @@
             fontFace,
             filename,
             fallback,
+            aliases = [],
           } = fontData;
 
           FontHelper.loadFont(fontFace, filename, fallback);
+
+          if (aliases.length) {
+            aliases.forEach((alias) => {
+              FontHelper.loadFont(alias, filename, fallback);
+            });
+          }
         });
       }
     });
@@ -463,10 +515,12 @@
      */
 
     CoreEssentials.registerFunctionExtension('Window_Base.prototype.resetFontSettings', function() {
-      const fontName = `rmmz-windowfont-${this.windowName}`;
-      const windowFont = $gameSystem.getFontFace(fontName, true);
-      if (FontHelper.fontLoaded(fontName) && windowFont) {
-        this.contents.fontFace = windowFont;
+      if (!$gameSystem.hasFontOverride()) {
+        const fontName = `rmmz-windowfont-${this.windowName}`;
+        const windowFont = $gameSystem.getFontFace(fontName, true);
+        if (FontHelper.fontLoaded(fontName) && windowFont) {
+          this.contents.fontFace = windowFont;
+        }
       }
     });
   })();

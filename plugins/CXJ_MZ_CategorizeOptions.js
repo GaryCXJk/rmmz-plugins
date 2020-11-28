@@ -120,6 +120,14 @@
  * * change(index, forward)
  * * getSize(index)
  *
+ * There are already callbacks created for category, boolean and volume,
+ * however, you can override these callbacks if necessary. In fact, you can
+ * replace individual callbacks without having to redefine the ones you want
+ * to keep. This is because internally, it deep merges the callback object.
+ *
+ * While there technically aren't methods to remove a callback, simply
+ * setting a callback to null has the same effect.
+ *
  * Arguments:
  *
  * {string} type         - The option type to add a callback for.
@@ -143,16 +151,6 @@
  * An object containing all callbacks, the requested callback function if
  * callbackType is not null, or null if the type doesn't have a callback
  * or the callback function does not exist.
- *
- * -----------------
- * Plugin parameters
- * -----------------
- *
- * Empty menu
- * ----------
- *
- * This allows you to start off without any options. This is mainly for those
- * who wish to build their own options menu from scratch.
  *
  * ============================================================================
  * = Changelog                                                                =
@@ -211,11 +209,47 @@
  * @on Yes
  * @off No
  *
+ * @param touchUI
+ * @text Touch UI
+ * @desc Whether touch UI should be enabled by default or not.
+ * @type select
+ * @default null
+ * @option Default
+ * @value null
+ * @option Yes
+ * @value true
+ * @option No
+ * @value false
+ *
+ * @param hideTouchUI
+ * @text Hide Touch UI option
+ * @desc Whether or not to hide the touch UI option. Only applicable if
+ * Empty menu is turned off.
+ * @type boolean
+ * @default false
+ * @on Yes
+ * @off No
+ *
  * @param windowWidth
  * @text Window width
- * @desc The width of the options window.
+ * @desc The width of the options window. Set 0 or lower to set the width based
+ * on the game screen size.
  * @type number
  * @default 400
+ *
+ * @params maxWindowHeight
+ * @text Max. window height
+ * @desc The window height the window can grow to. Set 0 or lower to set the
+ * height based on the game screen size.
+ * @type number
+ * @default 0
+ *
+ * @params resetToDefaultSpacing
+ * @text Reset to Default spacing
+ * @desc The extra empty space above the Reset to Default button.
+ * @type number
+ * @default 16
+ * @min 0
  *
  * @param booleanWrap
  * @text Wrap boolean options
@@ -328,6 +362,18 @@
  * @default Master Volume
  * @parent text
  *
+ * @param text.resetToDefault
+ * @text General: Reset to Default
+ * @type string
+ * @default Reset to Default
+ * @parent text
+ *
+ * @param text.back
+ * @text General: Back
+ * @type string
+ * @default Back
+ * @parent text
+ *
  */
 /*~struct~Color:
  * @param red
@@ -404,7 +450,11 @@
 
   const parameters = CoreEssentials.getParameters(pluginName, {
     emptyMenu: false,
+    touchUI: null,
+    hideTouchUI: false,
     windowWidth: 400,
+    maxWindowHeight: 0,
+    resetToDefaultSpacing: 16,
     booleanWrap: false,
     booleanDisplay: 'toggle',
     volumeDisplay: 'numeric',
@@ -437,9 +487,15 @@
     'text.optionOn': 'ON',
     'text.optionOff': 'OFF',
     'text.audioMasterVolume': 'Master Volume',
+    'text.resetToDefault': 'Reset to Default',
+    'text.back': 'Back',
   }, {
     emptyMenu: 'boolean',
+    touchUI: 'literal',
+    hideTouchUI: 'boolean',
     windowWidth: 'number',
+    maxWindowHeight: 'number',
+    resetToDefaultSpacing: 'number',
     booleanWrap: 'boolean',
     booleanDisplay: 'text',
     volumeDisplay: 'text',
@@ -454,6 +510,8 @@
     'text.optionOn': 'text',
     'text.optionOff': 'text',
     'text.audioMasterVolume': 'text',
+    'text.resetToDefault': 'text',
+    'text.back': 'Back',
   });
 
   /* ------------------------------------------------------------------------
@@ -586,32 +644,47 @@
   } = CategorizeOptions;
 
   if (!parameters.emptyMenu) {
+    const textResetToDefault = getText.bind(null, 'resetToDefault');
+    const textBack = getText.bind(null, 'back');
+
     addOption(getText.bind(null, 'categoryGameplay'), 'gameplay', { type: 'category' });
     addOption(getText.bind(null, 'categoryAudio'),    'audio',    { type: 'category' });
+    addOption(textResetToDefault,                     'reset',    { type: 'reset' });
+    addOption(textBack,                               'cancel',   { type: 'cancel' });
 
-    addOption(fromTextManager, 'alwaysDash',      { type: 'boolean', category: 'gameplay' });
-    addOption(fromTextManager, 'commandRemember', { type: 'boolean', category: 'gameplay' });
-    addOption(fromTextManager, 'touchUI',         { type: 'boolean', category: 'gameplay' });
+    addOption(fromTextManager,    'alwaysDash',      { type: 'boolean', category: 'gameplay' });
+    addOption(fromTextManager,    'commandRemember', { type: 'boolean', category: 'gameplay' });
+    if (!parameters.hideTouchUI) {
+      addOption(fromTextManager,    'touchUI',         { type: 'boolean', category: 'gameplay' });
+    }
+    addOption(textResetToDefault, 'reset',           { type: 'reset', category: 'gameplay' });
+    addOption(textBack,           'cancel',          { type: 'cancel', category: 'gameplay' });
 
     addOption(getText.bind(null, 'audioMasterVolume'), 'masterVolume', { type: 'volume', category: 'audio' });
     addOption(fromTextManager, 'bgmVolume', { type: 'volume', category: 'audio' });
     addOption(fromTextManager, 'bgsVolume', { type: 'volume', category: 'audio' });
     addOption(fromTextManager, 'meVolume',  { type: 'volume', category: 'audio' });
     addOption(fromTextManager, 'seVolume',  { type: 'volume', category: 'audio' });
+    addOption(textResetToDefault, 'reset',  { type: 'reset', category: 'audio' });
+    addOption(textBack,           'cancel', { type: 'cancel', category: 'audio' });
   }
 
+  // Option type: Category
   addItemCallbacks('category', {
     render: function(index) {
+      // We want to simplify rendering this item.
       const rect = this.itemLineRect(index);
       this.resetTextColor();
       this.changePaintOpacity(this.isCommandEnabled(index));
-      this.drawText(this.commandName(index), rect.x, rect.y, rect.width, 'left');
+      this.drawText(this.commandName(index), rect.x, rect.y, rect.width, 'left', index);
     },
     ok: function(index) {
       const symbol = this.commandSymbol(index);
       this.setCategory(symbol);
       this.playOkSound();
-    }
+    },
+    // We want to disable the changing action, since it's not relevant.
+    change: () => {},
   });
 
   addItemCallbacks('boolean', {
@@ -622,6 +695,11 @@
       let statusWidth = this.statusWidth();
       const optionOn = getText('optionOn');
       const optionOff = getText('optionOff');
+      /*
+      If the display type is side-by-side, calculate the width based on
+      the string length of both options. We'll add four times the item
+      padding, twice for each item, since we want to pad on both sides.
+      */
       if (display === 'sbs') {
         statusWidth = 4 * this.itemPadding()
           + this.contents.measureTextWidth(optionOn)
@@ -630,24 +708,35 @@
       const titleWidth = rect.width - statusWidth;
       this.resetTextColor();
       this.changePaintOpacity(this.isCommandEnabled(index));
-      this.drawText(title, rect.x, rect.y, titleWidth, "left");
+      this.drawText(title, rect.x, rect.y, titleWidth, "left", index);
+      // Let's draw the strings side by side.
       if (display === 'sbs') {
+        // First, get the value. This value gets used to determine which option gets grayed out.
         const symbol = this.commandSymbol(index);
         const value = this.getConfigValue(symbol);
-        const onWidth = this.contents.measureTextWidth(optionOn);
+
+        // Next get the individual width of both strings.
         const offWidth = this.contents.measureTextWidth(optionOff);
-        this.changePaintOpacity(value);
-        this.drawText(optionOn, rect.x + titleWidth + this.itemPadding() * 2, rect.y, onWidth, "right");
+        const onWidth = this.contents.measureTextWidth(optionOn);
+
+        // First, draw the Off option.
         this.changePaintOpacity(!value);
-        this.drawText(optionOff, rect.x + titleWidth + this.itemPadding() * 4 + onWidth, rect.y, offWidth, "right");
+        this.drawText(optionOff, rect.x + titleWidth + this.itemPadding() * 2, rect.y, offWidth, "right", index);
+
+        // Next, draw the On option.
+        this.changePaintOpacity(value);
+        this.drawText(optionOn, rect.x + titleWidth + this.itemPadding() * 4 + offWidth, rect.y, onWidth, "right", index);
       } else {
+        // The original method of drawing.
         const status = this.statusText(index);
-        this.drawText(status, rect.x + titleWidth, rect.y, statusWidth, "right");
+        this.drawText(status, rect.x + titleWidth, rect.y, statusWidth, "right", index);
       }
     },
     change: function(index, forward) {
       const symbol = this.commandSymbol(index);
       let value = forward;
+      // If boolean wrap is enabled, the direction keys act as if you're
+      // selecting the option (it doesn't matter which side you press).
       if (parameters.booleanWrap) {
         value = !this.getConfigValue(symbol);
       }
@@ -669,57 +758,140 @@
       const titleWidth = rect.width - statusWidth;
       this.resetTextColor();
       this.changePaintOpacity(this.isCommandEnabled(index));
-      this.drawText(title, rect.x, rect.y, titleWidth, "left");
+      this.drawText(title, rect.x, rect.y, titleWidth, "left", index);
       if (display === 'slider') {
+        // First get the current value.
         const symbol = this.commandSymbol(index);
         const value = this.getConfigValue(symbol);
+
+        // Next get the colors.
         const sliderOutline = colorToRgba(parameters['volumeSlider.outlineColor']);
         const sliderBg = colorToRgba(parameters['volumeSlider.backgroundColor']);
         const sliderFill = colorToRgba(parameters['volumeSlider.fillColor']);
+
+        // Now calculate how full the bar should be.
         const volumeFill = Math.round((value / 100) * sliderWidth);
+
+        // Now calculate the exact coordinates where the top left of the bar should be.
         const sliderX = rect.x + titleWidth + 2 * this.itemPadding();
         const sliderY = rect.y + (rect.height - sliderHeight) / 2;
+
+        // If the value is higher than 0, draw the filled bar.
         if (value > 0) {
           this.contents.fillRect(sliderX, sliderY, volumeFill, sliderHeight, sliderFill);
         }
+
+        // If the value is lower than 100, draw the remainder.
         if (value < 100) {
           this.contents.fillRect(sliderX + volumeFill, sliderY, sliderWidth - volumeFill, sliderHeight, sliderBg);
         }
+
+        // Finally, draw the outline.
         this.contentsBack.strokeRect(sliderX, sliderY, sliderWidth, sliderHeight, sliderOutline);
       } else {
         const status = this.statusText(index);
-        this.drawText(status, rect.x + titleWidth, rect.y, statusWidth, "right");
+        this.drawText(status, rect.x + titleWidth, rect.y, statusWidth, "right", index);
       }
     },
   });
 
+  addItemCallbacks('reset', {
+    render: function(index) {
+      // We want to simplify rendering this item.
+      const rect = this.itemLineRect(index);
+      this.resetTextColor();
+      this.changePaintOpacity(this.isCommandEnabled(index));
+      this.drawText(this.commandName(index), rect.x, rect.y, rect.width, 'left', index);
+    },
+    ok: function() {
+      const { defaults } = ConfigManager;
+      const categoryData = this.getCategoryData();
+
+      while (categoryData.length) {
+        const data = categoryData.shift();
+
+        const {
+          type,
+          symbol,
+        } = data;
+
+        if (type === 'category') {
+          categoryData.push(...this.getCategoryData(symbol));
+        } else {
+          const defaultValue = CoreEssentials.findObject(symbol, defaults);
+          this.setConfigValue(symbol, defaultValue);
+        }
+      }
+      this.refreshCategory();
+      this.playOkSound();
+    },
+    // We want to disable the changing action, since it's not relevant.
+    change: () => {},
+    getSize: function() {
+      return this.lineHeight() + parameters.resetToDefaultSpacing;
+    },
+    getRect: function(_index, rect) {
+      rect.y += parameters.resetToDefaultSpacing;
+      rect.height -= parameters.resetToDefaultSpacing;
+      return rect;
+    }
+  });
+
+  // Option type: Cancel
+  addItemCallbacks('cancel', {
+    render: function(index) {
+      // We want to simplify rendering this item.
+      const rect = this.itemLineRect(index);
+      this.resetTextColor();
+      this.changePaintOpacity(this.isCommandEnabled(index));
+      this.drawText(this.commandName(index), rect.x, rect.y, rect.width, 'left', index);
+    },
+    ok: function() {
+      this.processCancel();
+    },
+    // We want to disable the changing action, since it's not relevant.
+    change: () => {},
+  });
+
   (() => {
+    // Let's first redefine ConfigManager.touchUI (if set in parameters).
+    if (parameters.touchUI !== null) {
+      ConfigManager.touchUI = parameters.touchUI;
+    }
+
     //-----------------------------------------------------------------------------
     // Window_OptionsExt
     //
     // The window for changing various settings on the options screen.
 
     class Window_OptionsExt extends Window_Options {
+      /**
+       * Gets run when the window gets initialized.
+       * @param {string} category - The category.
+       * @param {string} parent - The parent category.
+       */
       initialize(category = '', parent = null) {
         this._commandType = {};
         this._category = category;
-        this._parent = parent ? [ parent ] : [];
+        this._parent = parent ? [ (Array.isArray(parent) ? parent : [ parent, 0]) ] : [];
         const rect = this.getWindowRect();
         super.initialize(rect);
       }
 
+      /**
+       * Gets the window rectangle based on the current category.
+       */
       getWindowRect() {
         const options = categoryOptions[this._category];
         let windowHeight = $gameSystem.windowPadding() * 2;
-        options.forEach((option) => {
-          const getSize = getItemCallbacks(option.type, 'getSize');
-
-          if (getSize) {
-            windowHeight+= getSize.call(this, option);
-          } else {
-            windowHeight+= this.itemHeight();
-          }
+        options.forEach((_option, index) => {
+          windowHeight+= this.itemHeight(index);
         });
+        let maxWindowHeight = (parameters.maxWindowHeight || 0);
+        if (maxWindowHeight <= 0) {
+          maxWindowHeight = Graphics.boxHeight + maxWindowHeight;
+        }
+        windowHeight = Math.min(maxWindowHeight, windowHeight);
 
         const windowWidth = parameters.windowWidth > 0 ? parameters.windowWidth : Graphics.boxWidth - parameters.windowWidth;
         const windowX = (Graphics.boxWidth - windowWidth) / 2;
@@ -727,12 +899,17 @@
         return new Rectangle(windowX, windowY, windowWidth, windowHeight);
       }
 
+      /**
+       * Adds items from the selected category.
+       * @param {string} category - The category to add items from.
+       */
       addCategory(category = null) {
-        const currentCategory = category !== null ? category : this._category;
+        // Get every option of the current category.
+        const categoryData = this.getCategoryData(category, true);
 
-        const categoryData = categoryOptions[currentCategory];
-
+        // Iterate through each option.
         categoryData.forEach((data) => {
+          // Destructure the option data.
           const {
             name,
             symbol,
@@ -741,14 +918,35 @@
             type,
           } = data;
 
+          // If name is a function, run the function, otherwise, use name as label.
           const label = typeof name === 'function' ? name(symbol) : name;
 
           this.addCommand(label, symbol, enabled, ext, null, type);
         });
       }
 
+      /**
+       * Checks whether the current category window has a parent.
+       */
       hasParentCategory() {
         return !!this._parent.length;
+      }
+
+      getCategory() {
+        return this._category;
+      }
+
+      getCategoryData(category = null, getRaw = false) {
+        // If no category has been set, use the current category.
+        const currentCategory = category !== null ? category : this._category;
+
+        // Get every option of the current category.
+        const categoryData = categoryOptions[currentCategory];
+
+        if (getRaw) {
+          return categoryData;
+        }
+        return CoreEssentials.copyArray(categoryData);
       }
 
       popCategory() {
@@ -762,6 +960,7 @@
         this._parent.push([this._category, this.index()]);
         this._category = category;
         this.refreshCategory();
+        this.select(0);
       }
 
       refreshCategory() {
@@ -776,18 +975,47 @@
         this._commandType[symbol] = type;
       }
 
+      overallHeight() {
+        // First store the maximum amount of columns.
+        const maxCols = this.maxCols();
+
+        // Next, create an array representing the columns.
+        const cols = [];
+
+        // Now, for each item height we'll add it to the corresponding column.
+        for (let idx = 0; idx < this._list.length; idx++) {
+          cols[idx % maxCols] = (cols[idx % maxCols] || 0) + this.itemHeight(idx);
+        }
+
+        // Finally, return the largest number in the array.
+        return Math.max(...cols);
+      }
+
+      /**
+       * Creates the command list.
+       */
       makeCommandList() {
         this.addCategory();
       }
 
+      /**
+       * @deprecated 1.0 - All is handled through makeCommandList.
+       */
       addGeneralOptions() {
         this.addCategory('gameplay');
       }
 
+      /**
+       * @deprecated 1.0 - All is handled through makeCommandList.
+       */
       addVolumeOptions() {
         this.addCategory('audio');
       };
 
+      /**
+       * Checks the command type.
+       * @param {number} index - The index.
+       */
       commandType(index) {
         const symbol = this.commandSymbol(index);
         return this._commandType[symbol];
@@ -802,6 +1030,66 @@
         return this._commandType[symbol] === 'volume';
       }
 
+      itemRect(index) {
+        const maxCols = this.maxCols();
+        const itemWidth = this.itemWidth();
+        const itemHeight = this.itemHeight(index);
+        const colSpacing = this.colSpacing();
+        const rowSpacing = this.rowSpacing();
+        const col = index % maxCols;
+        const x = col * itemWidth + colSpacing / 2 - this.scrollBaseX();
+        let y = rowSpacing / 2 - this.scrollBaseY();
+        for (let idx = 0; idx < index; idx++) {
+          if (idx % maxCols === col) {
+            y+= this.itemHeight(idx);
+          }
+        }
+        const width = itemWidth - colSpacing;
+        const height = itemHeight - rowSpacing;
+        const rect = new Rectangle(x, y, width, height);
+
+        const option = categoryOptions[this._category][index];
+        const getRect = getItemCallbacks(option.type, 'getRect');
+
+        if (getRect) {
+          return getRect.call(this, index, rect);
+        }
+        return rect;
+      }
+
+      itemLineRect(index) {
+        const rect = this.itemRectWithPadding(index);
+        const padding = (rect.height - this.lineHeight(index)) / 2;
+        rect.y += padding;
+        rect.height -= padding * 2;
+        return rect;
+      }
+
+      /**
+       * Retrieves the line height.
+       * @param {number} index - The option index.
+       */
+      lineHeight(index = null) {
+        // If an index is set, try to retrieve the current option's size.
+        if (index !== null) {
+          const option = categoryOptions[this._category][index];
+
+          const getSize = getItemCallbacks(option.type, 'getSize');
+
+          if (getSize) {
+            return getSize.call(this, index);
+          }
+        }
+        return super.lineHeight();
+      }
+
+      itemHeight(index = null) {
+        if (index === null) {
+          return super.itemHeight();
+        }
+        return this.lineHeight(index) + 8;
+      }
+
       drawItem(index) {
         const renderCallback = this.commandCallbacks(index, 'render');
 
@@ -810,6 +1098,10 @@
         } else {
           super.drawItem(index);
         }
+      }
+
+      drawText(text, x, y, maxWidth, align, index = null) {
+        this.contents.drawText(text, x, y, maxWidth, this.lineHeight(index), align);
       }
 
       processOk() {
@@ -848,27 +1140,58 @@
         return false;
       }
 
+      /**
+       * Retrieves the proper text string for boolean values.
+       * @param {boolean} value - Whether the option is on or off.
+       */
       booleanStatusText(value) {
         return getText(value ? 'optionOn' : 'optionOff');
       }
 
+      /**
+       * Defines the step size for volume.
+       * @returns The step size for volume configuration.
+       */
       volumeOffset() {
         return parameters.volumeStepSize || 20;
       }
 
+      /**
+       * Retrieves a config value.
+       * @param {string} symbol - The name of the config setting.
+       */
       getConfigValue(symbol) {
         return CoreEssentials.findObject(symbol, ConfigManager);
       }
 
-      setConfigValue(symbol, volume) {
+      /**
+       * Sets a config value.
+       * @param {string} symbol - The name of the config setting.
+       * @param {*} value - The value that needs to be stored.
+       */
+      setConfigValue(symbol, value) {
+        // We'll set ConfigManager as the root object. This so that we can also
+        // target nested objects later if needed.
         let rootObject = ConfigManager;
+
+        // We'll also set the property name to the symbol.
         let prop = symbol;
+
+        // If symbol contains a dot, we can assume it's a nested object that
+        // needs to be targeted.
         if (symbol.includes('.')) {
+          // Split the symbol to an array, then pop the last element. This last
+          // element will be the new prop.
           const symbolSegs = symbol.split('.');
           prop = symbolSegs.pop();
+
+          // Using the remaining segments, find the proper object. This will be the
+          // rootObject.
           rootObject = CoreEssentials.findObject(symbolSegs.join('.'), ConfigManager);
         }
-        rootObject[prop] = volume;
+
+        // Finally, set the value to the object's property.
+        rootObject[prop] = value;
       };
     }
 
@@ -881,12 +1204,15 @@
 
     class Scene_OptionsExt extends Scene_Options {
       createOptionsWindow() {
+        // Window_OptionsExt is being used instead of the regular Window_Options.
         this._optionsWindow = new Window_OptionsExt();
         this._optionsWindow.setHandler("cancel", this.onCancel.bind(this));
         this.addWindow(this._optionsWindow);
       }
 
       onCancel() {
+        // This fix makes sure that the options window only closes if it's on
+        // the root category. Otherwise, go one category up.
         if (this._optionsWindow.hasParentCategory()) {
           this._optionsWindow.popCategory();
           this._optionsWindow.activate();
@@ -898,17 +1224,36 @@
 
     CategorizeOptions.Scene_OptionsExt = Scene_OptionsExt;
 
+    CoreEssentials.registerFunctionExtension('Scene_Boot.prototype.initialize', function() {
+      ConfigManager.defaults = ConfigManager.makeData();
+    });
+
+    /* --------------------------------------------------------------------
+     * - Scene_Title.prototype.commandOptions (Override)                  -
+     * --------------------------------------------------------------------
+     */
+
     Scene_Title.prototype.commandOptions = function() {
       this._commandWindow.close();
       SceneManager.push(Scene_OptionsExt);
     };
 
+    /* --------------------------------------------------------------------
+     * - Scene_Menu.prototype.commandOptions (Override)                   -
+     * --------------------------------------------------------------------
+     */
+
     Scene_Menu.prototype.commandOptions = function() {
       SceneManager.push(Scene_OptionsExt);
     };
 
+    // This manages the general volume.
     AudioManager._masterVolume = 100;
 
+    /* --------------------------------------------------------------------
+     * - AudioManager.masterVolume (New)                                  -
+     * --------------------------------------------------------------------
+     */
     Object.defineProperty(AudioManager, "masterVolume", {
       get: function() {
           return this._masterVolume;
@@ -921,6 +1266,11 @@
       },
       configurable: true
     });
+
+    /* --------------------------------------------------------------------
+     * - AudioManager.updateBufferParameters (Override)                   -
+     * --------------------------------------------------------------------
+     */
 
     CoreEssentials.registerFunctionExtension('AudioManager.updateBufferParameters', function(buffer, _configVolume, audio) {
       if (buffer && audio) {
